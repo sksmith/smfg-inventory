@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smfg-inventory
+  namespace: smfg-inventory
+  labels:
+    app: smfg-inventory
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: smfg-inventory
+  template:
+    metadata:
+      labels:
+        app: smfg-inventory
+    spec:
+      containers:
+        - name: smfg-inventory
+          image: docker-registry:5000/smfg-inventory:1.0
+          ports:
+            - containerPort: 8080
