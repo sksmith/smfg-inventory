@@ -25,14 +25,15 @@ func main() {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
-	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+	r.Use(api.LoggingMiddleware)
 	r.Use(middleware.URLFormat)
 	r.Use(api.MetricsMiddleware)
 	r.Use(render.SetContentType(render.ContentTypeJSON))
 
 	r.Handle("/metrics", promhttp.Handler())
 
+	inventory.WithService(inventory.NewService(inventory.NewMemoryRepo()))
 	r.Route("/inventory/v1", inventory.Api)
 
 	// Mount the admin sub-router, which btw is the same as:

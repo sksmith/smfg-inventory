@@ -11,13 +11,13 @@ func Router() chi.Router {
 	r := chi.NewRouter()
 	r.Use(adminOnly)
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("admin: index"))
+		_, _ = w.Write([]byte("admin: index"))
 	})
 	r.Get("/accounts", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("admin: list accounts.."))
+		_, _ = w.Write([]byte("admin: list accounts.."))
 	})
 	r.Get("/users/{userId}", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(fmt.Sprintf("admin: view user id %v", chi.URLParam(r, "userId"))))
+		_, _ = w.Write([]byte(fmt.Sprintf("admin: view user id %v", chi.URLParam(r, "userId"))))
 	})
 	return r
 }
