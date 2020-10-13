@@ -7,3 +7,8 @@ This service provides several REST endpoints.
 * How do you build the project?
 * Add a link to the swagger file
 * Lookup a nice README to emulate
+
+```shell
+sudo docker build . --tag docker-registry:5000/smfg-inventory:1.0
+sudo docker push docker-registry:5000/smfg-inventory:1.0
+```
