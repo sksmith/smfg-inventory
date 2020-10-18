@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/docgen"
 	"github.com/go-chi/render"
+	"github.com/rs/zerolog"
 	"github.com/sksmith/smfg-inventory/admin"
 	"github.com/sksmith/smfg-inventory/api"
 	"github.com/sksmith/smfg-inventory/inventory"
@@ -16,69 +17,64 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-var routes = *flag.Bool("routes", false, "Generate router documentation")
-var port = *flag.String("port", "8080", "Port the application should listen on")
+var routes = flag.Bool("routes", false, "Generate router documentation")
+var port = flag.String("port", "8080", "Port the application should listen on")
+var logLevel = flag.String("loglevel", "trace", "The minimum level for logs to print")
 
 func main() {
 	flag.Parse()
+	setLogLevel()
 
+	r := configureRouter()
+
+	if *routes {
+		createRouteDocs(r)
+	}
+
+	log.Info().Str("port", *port).Msg("Listening")
+	log.Fatal().Err(http.ListenAndServe(":" + *port, r))
+}
+
+func configureRouter() chi.Router {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recoverer)
-	r.Use(api.LoggingMiddleware)
 	r.Use(middleware.URLFormat)
 	r.Use(api.MetricsMiddleware)
 	r.Use(render.SetContentType(render.ContentTypeJSON))
+	r.Use(api.LoggingMiddleware)
 
 	r.Handle("/metrics", promhttp.Handler())
-
-	inventory.WithService(inventory.NewService(inventory.NewMemoryRepo()))
-	r.Route("/inventory/v1", inventory.Api)
-
-	// Mount the admin sub-router, which btw is the same as:
-	// r.Route("/admin", func(r chi.Router) { admin routes here })
+	r.Route("/inventory/v1", inventoryApi)
 	r.Mount("/admin", admin.Router())
 
-	// Passing -routes to the program will generate docs for the above
-	// router definition. See the `routes.json` file in this folder for
-	// the output.
-	if routes {
-		// TODO See how documentation is generated
-
-		// fmt.Println(docgen.JSONRoutesDoc(r))
-		fmt.Println(docgen.MarkdownRoutesDoc(r, docgen.MarkdownOpts{
-			ProjectPath: "github.com/sksmith/smfg-inventory",
-			Intro:       "The generated API documentation for smfg-inventory.",
-		}))
-		return
-	}
-
-	log.Info().Str("port", port).Msg("Listening")
-	log.Fatal().Err(http.ListenAndServe(":" + port, r))
+	return r
 }
 
-// This is entirely optional, but I wanted to demonstrate how you could easily
-// add your own logic to the render.Respond method.
-func init() {
-	render.Respond = func(w http.ResponseWriter, r *http.Request, v interface{}) {
-		if err, ok := v.(error); ok {
+func inventoryApi(r chi.Router) {
+	repo := inventory.NewMemoryRepo()
+	service := inventory.NewService(repo)
+	invApi := inventory.NewApi(service)
+	invApi.ConfigureRouter(r)
+}
 
-			// We set a default error status response code if one hasn't been set.
-			if _, ok := r.Context().Value(render.StatusCtxKey).(int); !ok {
-				w.WriteHeader(400)
-			}
+func createRouteDocs(r chi.Router) {
+	// TODO See how documentation is generated
 
-			// We log the error
-			fmt.Printf("Logging err: %s\n", err.Error())
+	fmt.Println(docgen.MarkdownRoutesDoc(r, docgen.MarkdownOpts{
+		ProjectPath: "github.com/sksmith/smfg-inventory",
+		Intro:       "The generated API documentation for smfg-inventory.",
+	}))
+	return
+}
 
-			// We change the response to not reveal the actual error message,
-			// instead we can transform the message something more friendly or mapped
-			// to some code / language, etc.
-			render.DefaultResponder(w, r, render.M{"status": "error"})
-			return
-		}
-
-		render.DefaultResponder(w, r, v)
+func setLogLevel() {
+	level, err := zerolog.ParseLevel(*logLevel)
+	if err != nil {
+		log.Warn().Str("loglevel", *logLevel).Err(err).Msg("defaulting to info")
+		level = zerolog.InfoLevel
 	}
+	log.Info().Str("loglevel", level.String()).Msg("setting log level")
+	zerolog.SetGlobalLevel(level)
 }

@@ -2,35 +2,37 @@ package inventory
 
 import (
 	"context"
+	"errors"
 	"github.com/go-chi/chi"
+	"github.com/go-chi/render"
 	"github.com/sksmith/smfg-inventory/api"
 	"net/http"
 	"strconv"
-
-	"github.com/go-chi/render"
 )
 
-var service *Service
-
-func WithService(s *Service) {
-	service = s
+type Api struct {
+	service Service
 }
 
-func Api (r chi.Router) {
-	r.With(api.Paginate).Get("/", list)
-	r.With(api.Paginate).Get("/search", search)
+func NewApi (service Service) *Api {
+	return &Api{service: service}
+}
+
+func (a *Api) ConfigureRouter(r chi.Router) {
+	r.With(api.Paginate).Get("/", a.List)
+	r.With(api.Paginate).Get("/search", a.Search)
 
 	r.Route("/{sku}", func(r chi.Router) {
-		r.Use(productCtx)
-		//r.Put("/", update) // PUT /articles/123F
+		r.Use(a.ProductCtx)
+		r.Post("/productionEvent", a.CreateProductionEvent)
 	})
 
 	r.Route("/reservation", func(r chi.Router) {
-		r.Post("/", createReservation)
+		r.Post("/", a.CreateReservation)
 
 		r.Route("/{reservationID}", func(r chi.Router) {
-			r.Use(reservationCtx)
-			r.Delete("/", cancelReservation)
+			r.Use(a.ReservationCtx)
+			r.Delete("/", a.CancelReservation)
 		})
 	})
 }
@@ -46,7 +48,6 @@ func NewProductResponse(product Product) *ProductResponse {
 
 func (rd *ProductResponse) Render(_ http.ResponseWriter, _ *http.Request) error {
 	// Pre-processing before a response is marshalled and sent across the wire
-	// This doesn't do much now, but I wanted to document the pattern easily here
 	return nil
 }
 
@@ -58,25 +59,61 @@ func NewProductListResponse(products []Product) []render.Renderer {
 	return list
 }
 
-func list(w http.ResponseWriter, r *http.Request) {
+type ProductionEventRequest struct {
+	*ProductionEvent
+}
 
+func (p *ProductionEventRequest) Bind(_ *http.Request) error {
+	if p.ProductionEvent == nil {
+		return errors.New("missing required ProductionEvent fields")
+	}
+
+	return nil
+}
+
+type ProductionEventResponse struct {
+	*ProductionEvent
+}
+
+func (p *ProductionEventResponse) Bind(_ *http.Request) error {
+	if p.ProductionEvent == nil {
+		return errors.New("missing required ProductionEvent fields")
+	}
+
+	return nil
+}
+
+func (a *Api) CreateProductionEvent(w http.ResponseWriter, r *http.Request) {
+	product := r.Context().Value("product").(Product)
+
+	data := &ProductionEventRequest{}
+	if err := render.Bind(r, data); err != nil {
+		api.Render(w, r, api.ErrInvalidRequest(err))
+		return
+	}
+
+	if err := a.service.Produce(r.Context(), product, data.Quantity); err != nil {
+		api.Render(w, r, api.ErrInternalServerError(err))
+		return
+	}
+
+	return
+}
+
+func (a *Api) List(w http.ResponseWriter, r *http.Request) {
 	limit, offset, err := getLimitAndOffset(r)
 	if err != nil {
-		// TODO - Should log these exceptions
-		_ = render.Render(w, r, api.ErrInvalidRequest(err))
+		api.Render(w, r, api.ErrInvalidRequest(err))
 		return
 	}
 
-	products, err := service.GetAllProducts(r.Context(), limit, offset)
+	products, err := a.service.GetAllProducts(r.Context(), limit, offset)
 	if err != nil {
-		_ = render.Render(w, r, api.ErrRender(err))
+		api.Render(w, r, api.ErrInternalServerError(err))
 		return
 	}
 
-	if err := render.RenderList(w, r, NewProductListResponse(products)); err != nil {
-		_ = render.Render(w, r, api.ErrRender(err))
-		return
-	}
+	api.RenderList(w, r, NewProductListResponse(products))
 }
 
 func getLimitAndOffset(r *http.Request) (limit, offset int, err error) {
@@ -100,38 +137,35 @@ func getLimitAndOffset(r *http.Request) (limit, offset int, err error) {
 	return limit, offset, nil
 }
 
-func search(w http.ResponseWriter, r *http.Request) {
+func (a *Api) Search(w http.ResponseWriter, r *http.Request) {
 	limit, offset, err := getLimitAndOffset(r)
 	if err != nil {
-		_ = render.Render(w, r, api.ErrRender(err))
+		api.Render(w, r, api.ErrInternalServerError(err))
 		return
 	}
 
-	products, err := service.GetAllProducts(r.Context(), limit, offset)
+	products, err := a.service.GetAllProducts(r.Context(), limit, offset)
 	if err != nil {
-		_ = render.Render(w, r, api.ErrRender(err))
+		api.Render(w, r, api.ErrInternalServerError(err))
 		return
 	}
 
-	if err := render.RenderList(w, r, NewProductListResponse(products)); err != nil {
-		_ = render.Render(w, r, api.ErrRender(err))
-		return
-	}
+	api.RenderList(w, r, NewProductListResponse(products))
 }
 
-func productCtx(next http.Handler) http.Handler {
+func (a *Api) ProductCtx(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var product Product
 		var err error
 
 		if sku := chi.URLParam(r, "sku"); sku != "" {
-			product, err = service.GetProduct(r.Context(), sku)
+			product, err = a.service.GetProduct(r.Context(), sku)
 		} else {
-			_ = render.Render(w, r, api.ErrNotFound)
+			api.Render(w, r, api.ErrNotFound)
 			return
 		}
 		if err != nil {
-			_ = render.Render(w, r, api.ErrNotFound)
+			api.Render(w, r, api.ErrNotFound)
 			return
 		}
 
@@ -140,12 +174,12 @@ func productCtx(next http.Handler) http.Handler {
 	})
 }
 
-func cancelReservation(_ http.ResponseWriter, _ *http.Request) {
+func (a *Api) CancelReservation(_ http.ResponseWriter, _ *http.Request) {
 	// Not implemented
 	return
 }
 
-func reservationCtx(next http.Handler) http.Handler {
+func (a *Api) ReservationCtx(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Not implemented
 		ctx := context.WithValue(r.Context(), "reservation", nil)
@@ -154,7 +188,7 @@ func reservationCtx(next http.Handler) http.Handler {
 	})
 }
 
-func createReservation(_ http.ResponseWriter, _ *http.Request) {
+func (a *Api) CreateReservation(_ http.ResponseWriter, _ *http.Request) {
 	 //:= r.Context().Value("article").(*main.Article)
 	// Not implemented
 	return

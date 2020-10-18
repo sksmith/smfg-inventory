@@ -49,10 +49,10 @@ func MetricsMiddleware(next http.Handler) http.Handler {
 func LoggingMiddleware(next http.Handler) http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 
 		defer func() {
 			//ctx := chi.RouteContext(r.Context())
-			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 			log.Trace().
 				Str("method", r.Method).
 				Str("host", r.Host).
@@ -63,7 +63,7 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 				Dur("duration", time.Since(start)).Send()
 		}()
 
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(ww, r)
 	}
 	return http.HandlerFunc(fn)
 }

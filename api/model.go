@@ -3,6 +3,7 @@ package api
 import (
 	"github.com/go-chi/render"
 	"net/http"
+	"github.com/rs/zerolog/log"
 )
 
 //--
@@ -37,12 +38,33 @@ func ErrInvalidRequest(err error) render.Renderer {
 	}
 }
 
+func ErrInternalServerError(err error) render.Renderer {
+	return &ErrResponse{
+		Err:            err,
+		HTTPStatusCode: 500,
+		StatusText:     "Internal server error.",
+		ErrorText:      err.Error(),
+	}
+}
+
 func ErrRender(err error) render.Renderer {
 	return &ErrResponse{
 		Err:            err,
 		HTTPStatusCode: 422,
 		StatusText:     "Error rendering response.",
 		ErrorText:      err.Error(),
+	}
+}
+
+func Render(w http.ResponseWriter, r *http.Request, rnd render.Renderer) {
+	if err := render.Render(w, r, rnd); err != nil {
+		log.Warn().Err(err).Msg("failed to render")
+	}
+}
+
+func RenderList(w http.ResponseWriter, r *http.Request, l []render.Renderer) {
+	if err := render.RenderList(w, r, l); err != nil {
+		log.Warn().Err(err).Msg("failed to render")
 	}
 }
 

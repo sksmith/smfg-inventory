@@ -1,6 +1,8 @@
 package api
 
-import "net/http"
+import (
+	"net/http"
+)
 
 // paginate is a stub, but very possible to implement middleware logic
 // to handle the request params for handling a paginated request.

@@ -9,15 +9,22 @@ import (
 	"time"
 )
 
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo Repository) *service {
+	return &service{repo: repo}
 }
 
-type Service struct {
+type Service interface {
+	Produce(ctx context.Context, product Product, qty int64) error
+	Reserve(ctx context.Context, product Product, qty int64) error
+	GetAllProducts(ctx context.Context, limit, offset int) ([]Product, error)
+	GetProduct(ctx context.Context, sku string) (Product, error)
+}
+
+type service struct {
 	repo Repository
 }
 
-func (s *Service) Produce(ctx context.Context, product Product, qty int64) error {
+func (s *service) Produce(ctx context.Context, product Product, qty int64) error {
 	tx, err := s.repo.BeginTransaction(ctx)
 	if err != nil {
 		return err
@@ -51,11 +58,16 @@ func (s *Service) Produce(ctx context.Context, product Product, qty int64) error
 	return nil
 }
 
-func (s *Service) GetAllProducts(ctx context.Context, limit, offset int) ([]Product, error) {
+func (s *service) Reserve(_ context.Context, _ Product, _ int64) error {
+	//res := Reservation{CustomerID: }
+	return nil
+}
+
+func (s *service) GetAllProducts(ctx context.Context, limit, offset int) ([]Product, error) {
 	return s.repo.GetAllProducts(ctx, limit, offset)
 }
 
-func (s *Service) GetProduct(ctx context.Context, sku string) (Product, error) {
+func (s *service) GetProduct(ctx context.Context, sku string) (Product, error) {
 	return s.repo.GetProduct(ctx, sku)
 }
 
