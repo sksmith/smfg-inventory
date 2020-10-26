@@ -5,10 +5,13 @@ import (
 	"errors"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/render"
+	"github.com/rs/zerolog/log"
 	"github.com/sksmith/smfg-inventory/api"
 	"net/http"
 	"strconv"
 )
+
+const DefaultPageLimit = 50
 
 type Api struct {
 	service Service
@@ -21,6 +24,7 @@ func NewApi (service Service) *Api {
 func (a *Api) ConfigureRouter(r chi.Router) {
 	r.With(api.Paginate).Get("/", a.List)
 	r.With(api.Paginate).Get("/search", a.Search)
+	r.Post("/", a.Create)
 
 	r.Route("/{sku}", func(r chi.Router) {
 		r.Use(a.ProductCtx)
@@ -51,12 +55,93 @@ func (rd *ProductResponse) Render(_ http.ResponseWriter, _ *http.Request) error 
 	return nil
 }
 
+func (a *Api) List(w http.ResponseWriter, r *http.Request) {
+	limit, offset, err := getLimitAndOffset(r)
+	if err != nil {
+		api.Render(w, r, api.ErrInvalidRequest(err))
+		return
+	}
+
+	products, err := a.service.GetAllProducts(r.Context(), limit, offset)
+	if err != nil {
+		log.Err(err).Send()
+		api.Render(w, r, api.ErrInternalServerError())
+		return
+	}
+
+	api.RenderList(w, r, NewProductListResponse(products))
+}
+
+func (a *Api) Create(w http.ResponseWriter, r *http.Request) {
+	data := &CreateProductRequest{}
+	if err := render.Bind(r, data); err != nil {
+		api.Render(w, r, api.ErrInvalidRequest(err))
+		return
+	}
+
+	if err := a.service.CreateProduct(r.Context(), *data.Product); err != nil {
+		log.Err(err).Send()
+		api.Render(w, r, api.ErrInternalServerError())
+		return
+	}
+}
+
+func (a *Api) Search(w http.ResponseWriter, r *http.Request) {
+	limit, offset, err := getLimitAndOffset(r)
+	if err != nil {
+		api.Render(w, r, api.ErrInvalidRequest(err))
+		return
+	}
+
+	products, err := a.service.GetAllProducts(r.Context(), limit, offset)
+	if err != nil {
+		log.Err(err).Send()
+		api.Render(w, r, api.ErrInternalServerError())
+		return
+	}
+
+	api.RenderList(w, r, NewProductListResponse(products))
+}
+
+func (a *Api) ProductCtx(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var product Product
+		var err error
+
+		if sku := chi.URLParam(r, "sku"); sku != "" {
+			product, err = a.service.GetProduct(r.Context(), sku)
+		} else {
+			api.Render(w, r, api.ErrNotFound)
+			return
+		}
+		if err != nil {
+			api.Render(w, r, api.ErrNotFound)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), "product", product)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 func NewProductListResponse(products []Product) []render.Renderer {
 	var list []render.Renderer
 	for _, product := range products {
 		list = append(list, NewProductResponse(product))
 	}
 	return list
+}
+
+type CreateProductRequest struct {
+	*Product
+}
+
+func (p *CreateProductRequest) Bind(_ *http.Request) error {
+	if p.Upc == "" || p.Name == "" || p.Sku == "" {
+		return errors.New("missing required field(s)")
+	}
+
+	return nil
 }
 
 type ProductionEventRequest struct {
@@ -93,33 +178,19 @@ func (a *Api) CreateProductionEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := a.service.Produce(r.Context(), product, data.Quantity); err != nil {
-		api.Render(w, r, api.ErrInternalServerError(err))
+		log.Err(err).Send()
+		api.Render(w, r, api.ErrInternalServerError())
 		return
 	}
 
 	return
 }
 
-func (a *Api) List(w http.ResponseWriter, r *http.Request) {
-	limit, offset, err := getLimitAndOffset(r)
-	if err != nil {
-		api.Render(w, r, api.ErrInvalidRequest(err))
-		return
-	}
-
-	products, err := a.service.GetAllProducts(r.Context(), limit, offset)
-	if err != nil {
-		api.Render(w, r, api.ErrInternalServerError(err))
-		return
-	}
-
-	api.RenderList(w, r, NewProductListResponse(products))
-}
-
 func getLimitAndOffset(r *http.Request) (limit, offset int, err error) {
 	limitStr := r.URL.Query().Get("limit")
 	offsetStr := r.URL.Query().Get("offset")
 
+	limit = DefaultPageLimit
 	if limitStr != "" {
 		limit, err = strconv.Atoi(limitStr)
 		if err != nil {
@@ -135,43 +206,6 @@ func getLimitAndOffset(r *http.Request) (limit, offset int, err error) {
 	}
 
 	return limit, offset, nil
-}
-
-func (a *Api) Search(w http.ResponseWriter, r *http.Request) {
-	limit, offset, err := getLimitAndOffset(r)
-	if err != nil {
-		api.Render(w, r, api.ErrInternalServerError(err))
-		return
-	}
-
-	products, err := a.service.GetAllProducts(r.Context(), limit, offset)
-	if err != nil {
-		api.Render(w, r, api.ErrInternalServerError(err))
-		return
-	}
-
-	api.RenderList(w, r, NewProductListResponse(products))
-}
-
-func (a *Api) ProductCtx(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var product Product
-		var err error
-
-		if sku := chi.URLParam(r, "sku"); sku != "" {
-			product, err = a.service.GetProduct(r.Context(), sku)
-		} else {
-			api.Render(w, r, api.ErrNotFound)
-			return
-		}
-		if err != nil {
-			api.Render(w, r, api.ErrNotFound)
-			return
-		}
-
-		ctx := context.WithValue(r.Context(), "product", product)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
 }
 
 func (a *Api) CancelReservation(_ http.ResponseWriter, _ *http.Request) {

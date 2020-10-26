@@ -6,6 +6,7 @@ package inventory
 
 import (
 	"context"
+	"github.com/rs/zerolog/log"
 	"time"
 )
 
@@ -18,19 +19,20 @@ type Service interface {
 	Reserve(ctx context.Context, product Product, qty int64) error
 	GetAllProducts(ctx context.Context, limit, offset int) ([]Product, error)
 	GetProduct(ctx context.Context, sku string) (Product, error)
+	CreateProduct(ctx context.Context, product Product) error
 }
 
 type service struct {
 	repo Repository
 }
 
+func (s *service) CreateProduct(ctx context.Context, product Product) error {
+	return s.repo.SaveProduct(ctx, product)
+}
+
 func (s *service) Produce(ctx context.Context, product Product, qty int64) error {
 	tx, err := s.repo.BeginTransaction(ctx)
 	if err != nil {
-		return err
-	}
-
-	if err = tx.RollbackUnlessCommitted(ctx); err != nil {
 		return err
 	}
 
@@ -41,12 +43,20 @@ func (s *service) Produce(ctx context.Context, product Product, qty int64) error
 	}
 
 	if err = s.repo.SaveProductionEvent(ctx, evt, tx); err != nil {
+		rberr := tx.Rollback(ctx)
+		if rberr != nil {
+			log.Warn().Err(err).Msg("failed to rollback save production event")
+		}
 		return err
 	}
 
 	// Increase product available inventory
 	product.Available += qty
 	if err = s.repo.SaveProduct(ctx, product, tx); err != nil {
+		rberr := tx.Rollback(ctx)
+		if rberr != nil {
+			log.Warn().Err(err).Msg("failed to rollback save production event")
+		}
 		return err
 	}
 
@@ -73,19 +83,19 @@ func (s *service) GetProduct(ctx context.Context, sku string) (Product, error) {
 
 // ProductionEvent is an entity. An addition to inventory through production of a Product.
 type ProductionEvent struct {
-	ID uint64
-	Sku string
-	Quantity int64
-	Created time.Time
+	ID uint64 `json:"id"`
+	Sku string `json:"sku"`
+	Quantity int64 `json:"quantity"`
+	Created time.Time `json:"created"`
 }
 
 // Product is a value object. A SKU able to be produced by the factory.
 type Product struct {
-	Sku string
-	Upc string
-	Name string
-	Available int64
-	Reserved int64
+	Sku string `json:"sku"`
+	Upc string `json:"upc"`
+	Name string `json:"name"`
+	Available int64 `json:"available"`
+	Reserved int64 `json:"reserved"`
 }
 
 // Reservation is an entity. An amount of inventory set aside for a given Customer.

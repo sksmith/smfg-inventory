@@ -3,6 +3,8 @@ package inventory
 import (
 	"context"
 	"errors"
+	"github.com/jackc/pgconn"
+	"github.com/jackc/pgx/v4"
 	"github.com/sksmith/smfg-inventory/db"
 	"sync"
 )
@@ -106,6 +108,22 @@ func (m *memoryRepo) BeginTransaction(_ context.Context) (db.Transaction, error)
 }
 
 type FalseTx struct{}
+
+func (t FalseTx) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+	return nil, nil
+}
+
+func (t FalseTx) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
+	return nil
+}
+
+func (t FalseTx) Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) {
+	return nil, nil
+}
+
+func (t FalseTx) Begin(ctx context.Context) (pgx.Tx, error) {
+	return nil, nil
+}
 
 func (FalseTx) Commit(_ context.Context) error {
 	return nil

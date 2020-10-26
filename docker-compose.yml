@@ -1,0 +1,41 @@
+version: '3'
+services:
+  postgres:
+    image: postgres
+    hostname: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: smfg-db
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+#  smfg-inventory:
+#    image: smfg-inventory
+#    hostname: smfg-inventory
+#    ports:
+#      - "8080:8080"
+#    command: -logLevel trace -textLogging
+#    environment:
+#      DB_HOST: postgres
+#      DB_PORT: 5432
+#      DB_USER: postgres
+#      DB_PASS: postgres
+#      DB_NAME: smfg-db
+
+  pgadmin:
+    image: dpage/pgadmin4
+    depends_on:
+      - postgres
+    ports:
+      - "8081:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: oz@oz.com
+      PGADMIN_DEFAULT_PASSWORD: oz
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

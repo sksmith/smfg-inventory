@@ -12,3 +12,13 @@ This service provides several REST endpoints.
 sudo docker build . --tag docker-registry:5000/smfg-inventory:1.0
 sudo docker push docker-registry:5000/smfg-inventory:1.0
 ```
+
+## Database Migrations
+
+I'm using the migrate project to manage database migrations.
+
+```shell
+migrate create -ext sql -dir db/migrations -seq create_products_table
+
+migrate -database postgres://postgres:postgres@localhost:5432/smfg-db?sslmode=disable -path db/migrations up
+```

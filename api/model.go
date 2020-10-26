@@ -38,12 +38,12 @@ func ErrInvalidRequest(err error) render.Renderer {
 	}
 }
 
-func ErrInternalServerError(err error) render.Renderer {
+func ErrInternalServerError() render.Renderer {
 	return &ErrResponse{
-		Err:            err,
+		Err:            nil,
 		HTTPStatusCode: 500,
 		StatusText:     "Internal server error.",
-		ErrorText:      err.Error(),
+		ErrorText:      "An internal server error has occurred.",
 	}
 }
 
