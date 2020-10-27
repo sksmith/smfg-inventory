@@ -16,31 +16,25 @@ func NewPostgresRepo(conn db.Conn) Repository {
 }
 
 func (d *dbRepo) SaveProductionEvent(ctx context.Context, event ProductionEvent, txs ...db.Transaction) error {
+	m := db.StartMetric("SaveProductionEvent")
 	tx := d.conn
 	if len(txs) > 0 {
 		tx = txs[0]
 	}
-	ct, err := tx.Exec(ctx,`
-		UPDATE production_events
-           SET sku = $2, quantity = $3, created = $4
-         WHERE id = $1;`,
-         event.ID, event.Sku, event.Quantity, event.Created)
-	if err != nil {
-		return err
-	}
-	if ct.RowsAffected() == 0 {
-		ct, err = tx.Exec(ctx,`
+	_, err := tx.Exec(ctx,`
 			INSERT INTO production_events (sku, quantity, created)
 			       VALUES ($1, $2, $3);`,
-			event.Sku, event.Quantity, event.Created)
-		if err != nil {
-			return err
-		}
+		event.Sku, event.Quantity, event.Created)
+	if err != nil {
+		m.Complete(err)
+		return err
 	}
+	m.Complete(nil)
 	return nil
 }
 
 func (d *dbRepo) SaveProduct(ctx context.Context, product Product, txs ...db.Transaction) error {
+	m := db.StartMetric("SaveProduct")
 	tx := d.conn
 	if len(txs) > 0 {
 		tx = txs[0]
@@ -51,6 +45,7 @@ func (d *dbRepo) SaveProduct(ctx context.Context, product Product, txs ...db.Tra
          WHERE sku = $1;`,
 		product.Sku, product.Upc, product.Name, product.Available, product.Reserved)
 	if err != nil {
+		m.Complete(nil)
 		return err
 	}
 	if ct.RowsAffected() == 0 {
@@ -58,15 +53,17 @@ func (d *dbRepo) SaveProduct(ctx context.Context, product Product, txs ...db.Tra
 		INSERT INTO products (sku, upc, name, available, reserved)
                       VALUES ($1, $2, $3, $4, $5);`,
 			product.Sku, product.Upc, product.Name, product.Available, product.Reserved)
+		m.Complete(err)
 		if err != nil {
 			return err
 		}
 	}
-
+	m.Complete(nil)
 	return nil
 }
 
 func (d *dbRepo) GetProduct(ctx context.Context, sku string, txs ...db.Transaction) (Product, error) {
+	m := db.StartMetric("GetProduct")
 	tx := d.conn
 	if len(txs) > 0 {
 		tx = txs[0]
@@ -77,13 +74,16 @@ func (d *dbRepo) GetProduct(ctx context.Context, sku string, txs ...db.Transacti
 		Scan(&product.Sku, &product.Upc, &product.Name, &product.Available, &product.Reserved)
 
 	if err != nil {
+		m.Complete(err)
 		return product, err
 	}
 
+	m.Complete(nil)
 	return product, nil
 }
 
 func (d *dbRepo) GetAllProducts(ctx context.Context, limit int, offset int, txs ...db.Transaction) ([]Product, error) {
+	m := db.StartMetric("GetAllProducts")
 	tx := d.conn
 	if len(txs) > 0 {
 		tx = txs[0]
@@ -94,6 +94,7 @@ func (d *dbRepo) GetAllProducts(ctx context.Context, limit int, offset int, txs 
 		`SELECT sku, upc, name, available, reserved FROM products ORDER BY sku LIMIT $1 OFFSET $2;`,
 		limit, offset)
 	if err != nil {
+		m.Complete(err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -102,11 +103,13 @@ func (d *dbRepo) GetAllProducts(ctx context.Context, limit int, offset int, txs 
 		product := Product{}
 		err = rows.Scan(&product.Sku, &product.Upc, &product.Name, &product.Available, &product.Reserved)
 		if err != nil {
+			m.Complete(err)
 			return nil, err
 		}
 		products = append(products, product)
 	}
 
+	m.Complete(nil)
 	return products, nil
 }
 

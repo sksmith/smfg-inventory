@@ -12,14 +12,14 @@ import (
 var (
 	urlHitCount = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "url_hit_count",
+			Name: "smfg_inventory_url_hit_count",
 			Help: "Number of times the given url was hit",
 		},
 		[]string{"method", "url"},
 	)
 	urlLatency = prometheus.NewSummaryVec(
 		prometheus.SummaryOpts{
-			Name:       "url_latency",
+			Name:       "smfg_inventory_url_latency",
 			Help:       "The latency quantiles for the given URL",
 			Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
 		},
@@ -28,15 +28,16 @@ var (
 )
 
 func MetricsMiddleware(next http.Handler) http.Handler {
-		fn := func(w http.ResponseWriter, r *http.Request) {
+	fn := func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
 		defer func() {
 			ctx := chi.RouteContext(r.Context())
 
 			if len(ctx.RoutePatterns) > 0 {
-				urlHitCount.With(prometheus.Labels{"method": ctx.RouteMethod, "url": ctx.RoutePatterns[0]}).Inc()
-				urlLatency.WithLabelValues(ctx.RouteMethod, ctx.RoutePatterns[0]).Observe(float64(time.Now().Sub(start).Milliseconds()))
+				dur := float64(time.Since(start).Milliseconds())
+				urlLatency.WithLabelValues(ctx.RouteMethod, ctx.RoutePatterns[0]).Observe(dur)
+				urlHitCount.WithLabelValues(ctx.RouteMethod, ctx.RoutePatterns[0]).Inc()
 			}
 
 		}()

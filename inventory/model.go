@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-func NewService(repo Repository) *service {
-	return &service{repo: repo}
+func NewService(repo Repository, queue Queue) *service {
+	return &service{repo: repo, queue: queue}
 }
 
 type Service interface {
@@ -24,6 +24,7 @@ type Service interface {
 
 type service struct {
 	repo Repository
+	queue Queue
 }
 
 func (s *service) CreateProduct(ctx context.Context, product Product) error {
@@ -55,7 +56,15 @@ func (s *service) Produce(ctx context.Context, product Product, qty int64) error
 	if err = s.repo.SaveProduct(ctx, product, tx); err != nil {
 		rberr := tx.Rollback(ctx)
 		if rberr != nil {
-			log.Warn().Err(err).Msg("failed to rollback save production event")
+			log.Warn().Err(err).Str("sku", product.Sku).Msg("failed to rollback save production event")
+		}
+		return err
+	}
+
+	if err = s.queue.Send(product, Exchange("inventory.fanout")); err != nil {
+		rberr := tx.Rollback(ctx)
+		if rberr != nil {
+			log.Warn().Err(err).Str("sku", product.Sku).Msg("failed to rollback save production event")
 		}
 		return err
 	}

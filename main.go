@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
@@ -10,66 +9,69 @@ import (
 	"github.com/go-chi/render"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/sksmith/smfg-inventory/admin"
 	"github.com/sksmith/smfg-inventory/api"
 	"github.com/sksmith/smfg-inventory/db"
 	"github.com/sksmith/smfg-inventory/inventory"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/rs/zerolog/log"
+
 )
 
-var routes = flag.Bool("routes", false, "Generate router documentation")
-var port = flag.String("port", "8080", "Port the application should listen on")
-var logLevel = flag.String("logLevel", "trace", "The minimum level for logs to print")
-var inMemory = flag.Bool("inMemory", false, "Start the application using an in memory db for dev")
-var textLogging = flag.Bool("textLogging", false, "Log using text output rather than structured")
-
-var dbpool *pgxpool.Pool
+var dbPool *pgxpool.Pool
+var config *AppConfig
 
 func main() {
 	ctx := context.Background()
 
-	flag.Parse()
+	var err error
+	config, err = LoadConfigs()
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to load configurations")
+	}
 	configLogging()
 
 	configDatabase(ctx)
 	r := configureRouter()
 
-	if *routes {
+	if config.GenerateRoutes {
 		createRouteDocs(r)
 	}
 
-	log.Info().Str("port", *port).Msg("listening")
-	log.Fatal().Err(http.ListenAndServe(":" + *port, r))
+	log.Info().Str("port", config.Port).Msg("listening")
+	log.Fatal().Err(http.ListenAndServe(":" + config.Port, r))
 }
 
 func configDatabase(ctx context.Context) {
-	if !*inMemory {
+	if !config.InMemoryDb {
 		var err error
-
-		host := os.Getenv("DB_HOST")
-		port := os.Getenv("DB_PORT")
-		user := os.Getenv("DB_USER")
-		pass := os.Getenv("DB_PASS")
-		name := os.Getenv("DB_NAME")
 
 		log.Info().Msg("executing migrations")
 
-
-		if err = db.RunMigrations(host, name, port, user, pass); err != nil {
-			log.Fatal().Err(err).Msg("error executing migrations")
+		if err = db.RunMigrations(
+			config.DbHost,
+			config.DbName,
+			config.DbPort,
+			config.DbUser,
+			config.DbPass); err != nil {
+			log.Warn().Err(err).Msg("error executing migrations")
 		}
 
 		connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-			host, port, user, pass, name)
+			config.DbHost, config.DbPort, config.DbUser, config.DbPass, config.DbName)
 
-		dbpool, err = db.ConnectDb(ctx, connStr)
-		if err != nil {
-			log.Fatal().Err(err).Msg("failed to create connection pool")
-			os.Exit(1)
+		for {
+			dbPool, err = db.ConnectDb(ctx, connStr)
+			if err != nil {
+				log.Error().Err(err).Msg("failed to create connection pool... retrying")
+				time.Sleep(1 * time.Second)
+				continue
+			}
+			break
 		}
 	}
 }
@@ -94,13 +96,32 @@ func configureRouter() chi.Router {
 func inventoryApi(r chi.Router) {
 	var repo inventory.Repository
 
-	if *inMemory {
+	if config.InMemoryDb {
 		repo = inventory.NewMemoryRepo()
 	} else {
-		repo = inventory.NewPostgresRepo(dbpool)
+		repo = inventory.NewPostgresRepo(dbPool)
 	}
 
-	service := inventory.NewService(repo)
+	var queue inventory.Queue
+	var err error
+
+	for {
+		queue, err = inventory.NewRabbitClient(
+			config.QName,
+			config.QUser,
+			config.QPass,
+			config.QHost,
+			config.QPort)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to connect to rabbitmq... retrying")
+			time.Sleep(1 * time.Second)
+			continue
+		}
+		break
+	}
+
+	service := inventory.NewService(repo, queue)
+
 	invApi := inventory.NewApi(service)
 	invApi.ConfigureRouter(r)
 }
@@ -116,13 +137,13 @@ func createRouteDocs(r chi.Router) {
 }
 
 func configLogging() {
-	if *textLogging {
+	if config.LogText {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 	}
 
-	level, err := zerolog.ParseLevel(*logLevel)
+	level, err := zerolog.ParseLevel(config.LogLevel)
 	if err != nil {
-		log.Warn().Str("loglevel", *logLevel).Err(err).Msg("defaulting to info")
+		log.Warn().Str("loglevel", config.LogLevel).Err(err).Msg("defaulting to info")
 		level = zerolog.InfoLevel
 	}
 	log.Info().Str("loglevel", level.String()).Msg("setting log level")

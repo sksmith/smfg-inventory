@@ -68,13 +68,11 @@ func (l logger) Log(ctx context.Context, level pgx.LogLevel, msg string, data ma
 		evt = log.Info()
 	}
 
-	evt.Msg(msg)
-
 	for k, v := range data {
 		evt.Interface(k, v)
 	}
 
-	evt.Send()
+	evt.Msg(msg)
 }
 
 func RunMigrations(host, database, port, user, password string) error {
