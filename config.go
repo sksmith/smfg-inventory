@@ -25,7 +25,7 @@ type AppConfig struct {
 	QName          string
 }
 
-func LoadConfigs() (*AppConfig, error) {
+func LoadConfigs(url, branch, profile string) (*AppConfig, error) {
 	appConfig := &AppConfig{}
 	var config *sc.Config
 	var err error
@@ -37,7 +37,7 @@ func LoadConfigs() (*AppConfig, error) {
 		if tryCount > maxRetries {
 			break
 		}
-		config, err = sc.Load("http://smfg-config-server:8085", "smfg-inventory", "master", "dev")
+		config, err = sc.Load(url, "smfg-inventory", branch, profile)
 		if err == nil {
 			break
 		}
@@ -72,7 +72,7 @@ func LoadConfigs() (*AppConfig, error) {
 		if err != nil {
 			text = false
 		}
-		appConfig.GenerateRoutes = text
+		appConfig.LogText = text
 
 		memory, err := strconv.ParseBool(config.Get("in.memory"))
 		if err != nil {

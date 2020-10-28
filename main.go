@@ -25,15 +25,23 @@ import (
 var dbPool *pgxpool.Pool
 var config *AppConfig
 
+var configUrl = os.Getenv("SMFG_CONFIG_SERVER_URL")
+var configBranch = os.Getenv("SMFG_CONFIG_SERVER_BRANCH")
+var profile = os.Getenv("SMFG_PROFILE")
+
+const AppName = "smfg-inventory"
+const AppVersion = "v0.0.1"
+
 func main() {
 	ctx := context.Background()
 
 	var err error
-	config, err = LoadConfigs()
+	config, err = LoadConfigs(configUrl, configBranch, profile)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to load configurations")
 	}
 	configLogging()
+	printLogHeader(config)
 
 	configDatabase(ctx)
 	r := configureRouter()
@@ -44,6 +52,23 @@ func main() {
 
 	log.Info().Str("port", config.Port).Msg("listening")
 	log.Fatal().Err(http.ListenAndServe(":" + config.Port, r))
+}
+
+func printLogHeader(c *AppConfig) {
+	if c.LogText {
+		log.Info().Msg("=============================================")
+		log.Info().Msg(fmt.Sprintf("    Application: %s", AppName))
+		log.Info().Msg(fmt.Sprintf("        Version: %s", AppVersion))
+		log.Info().Msg(fmt.Sprintf("        Profile: %s", profile))
+		log.Info().Msg(fmt.Sprintf("  Config Server: %s - %s", configUrl, configBranch))
+		log.Info().Msg("=============================================")
+	} else {
+		log.Info().Str("application", AppName).
+			Str("version", AppVersion).
+			Str("profile", profile).
+			Str("config-url", configUrl).
+			Str("config-branch", configBranch)
+	}
 }
 
 func configDatabase(ctx context.Context) {
