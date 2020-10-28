@@ -29,8 +29,9 @@ COPY . .
 RUN go get -d -v
 
 # Build the binary
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build \
-      -ldflags='-w -s -extldflags "-static"' -a \
+RUN VER=$(git describe --tag);TIM=$(date +'%Y-%m-%d_%T');SHA1=$(git rev-parse HEAD); \
+        CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build \
+      -ldflags='-w -s -extldflags "-static" -X main.AppVersion='$VER' -X main.BuildTime='$TIM' -X main.Sha1Version='$SHA1 -a \
       -o /go/bin/smfg-inventory .
 
 ############################
