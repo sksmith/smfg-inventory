@@ -18,6 +18,7 @@ type AppConfig struct {
 	DbUser         string
 	DbPass         string
 	DbName         string
+	DbMigrate      bool
 	QHost          string
 	QPort          string
 	QUser          string
@@ -45,41 +46,41 @@ func LoadConfigs(url, branch, profile string) (*AppConfig, error) {
 		time.Sleep(2 * time.Second)
 	}
 
-
 	if err != nil {
 		log.Warn().Err(err).Msg("unable to read configurations from config server")
 	} else {
+		// API Configs
 		appConfig.Port = config.Get("app.port")
+		appConfig.GenerateRoutes = getBool(config, "generate.routes")
+
+		// Log Configs
 		appConfig.LogLevel = config.Get("log.level")
+		appConfig.LogText = getBool(config, "log.text")
+
+		// DB Configs
 		appConfig.DbHost = config.Get("db.host")
 		appConfig.DbPort = config.Get("db.port")
 		appConfig.DbUser = config.Get("db.user")
 		appConfig.DbPass = config.Get("db.pass")
 		appConfig.DbName = config.Get("db.name")
+		appConfig.DbMigrate = getBool(config, "db.migrate")
+		appConfig.InMemoryDb = getBool(config, "in.memory")
+
+		// Queue Configs
 		appConfig.QHost = config.Get("queue.host")
 		appConfig.QPort = config.Get("queue.port")
 		appConfig.QUser = config.Get("queue.user")
 		appConfig.QPass = config.Get("queue.pass")
 		appConfig.QName = config.Get("queue.name")
-
-		routes, err := strconv.ParseBool(config.Get("generate.routes"))
-		if err != nil {
-			routes = false
-		}
-		appConfig.GenerateRoutes = routes
-
-		text, err := strconv.ParseBool(config.Get("log.text"))
-		if err != nil {
-			text = false
-		}
-		appConfig.LogText = text
-
-		memory, err := strconv.ParseBool(config.Get("in.memory"))
-		if err != nil {
-			memory = false
-		}
-		appConfig.InMemoryDb = memory
 	}
 
 	return appConfig, nil
+}
+
+func getBool(c *sc.Config, property string) bool {
+	val, err := strconv.ParseBool(c.Get(property))
+	if err != nil {
+		return false
+	}
+	return val
 }

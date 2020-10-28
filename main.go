@@ -85,15 +85,17 @@ func configDatabase(ctx context.Context) {
 	if !config.InMemoryDb {
 		var err error
 
-		log.Info().Msg("executing migrations")
+		if config.DbMigrate {
+			log.Info().Msg("executing migrations")
 
-		if err = db.RunMigrations(
-			config.DbHost,
-			config.DbName,
-			config.DbPort,
-			config.DbUser,
-			config.DbPass); err != nil {
-			log.Warn().Err(err).Msg("error executing migrations")
+			if err = db.RunMigrations(
+				config.DbHost,
+				config.DbName,
+				config.DbPort,
+				config.DbUser,
+				config.DbPass); err != nil {
+				log.Warn().Err(err).Msg("error executing migrations")
+			}
 		}
 
 		connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
