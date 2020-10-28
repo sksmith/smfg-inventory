@@ -2,6 +2,9 @@
 
 This service provides several REST endpoints.
 
+## TODO 
+
+* Make sure the application can run from scratch using docker compose
 * A link to the parent project
 * How do you run the project?
 * How do you build the project?

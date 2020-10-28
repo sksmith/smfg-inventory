@@ -26,24 +26,21 @@ type AppConfig struct {
 	QName          string
 }
 
+const maxRetries = 12
+const retryBackoffSec = 5
+
 func LoadConfigs(url, branch, profile string) (*AppConfig, error) {
 	appConfig := &AppConfig{}
 	var config *sc.Config
 	var err error
-	const maxRetries = 5
-	tryCount := 0
 
-	for {
-		tryCount++
-		if tryCount > maxRetries {
-			break
-		}
+	for tryCount := 1; tryCount < maxRetries; tryCount++ {
 		config, err = sc.Load(url, "smfg-inventory", branch, profile)
 		if err == nil {
 			break
 		}
 		log.Error().Err(err).Msg("failed to load configurations... retrying")
-		time.Sleep(2 * time.Second)
+		time.Sleep(5 * time.Second)
 	}
 
 	if err != nil {
