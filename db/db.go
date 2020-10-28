@@ -79,7 +79,7 @@ func RunMigrations(host, database, port, user, password string) error {
 	connStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
 		user, password, host, port, database)
 	m, err := migrate.New(
-		"file://db/migrations",
+		"file:/db/migrations",
 		connStr)
 	if err != nil {
 		return err

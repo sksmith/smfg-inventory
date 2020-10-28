@@ -8,9 +8,37 @@ This service provides several REST endpoints.
 * Add a link to the swagger file
 * Lookup a nice README to emulate
 
+## Updating the Project 
+
+```shell
+git add .
+git commit -m "your message"
+git tag v0.0.1
+git push origin v0.0.1
+docker build . -t smfg-inventory:latest
+```
+
 ```shell
 sudo docker build . --tag docker-registry:5000/smfg-inventory:1.0
 sudo docker push docker-registry:5000/smfg-inventory:1.0
+```
+
+## Running the Project
+
+If you wish to see how this application runs in its complete constellation, see [the parent repo](https://github.com/sksmith/smithmfg).
+
+If you just want to run this specific microservice locally...
+
+### Build the docker container
+
+```shell
+docker build . -t smfg-inventory:latest
+```
+
+### Run Docker Compose
+
+```shell
+docker-compose up
 ```
 
 ## Database Migrations
