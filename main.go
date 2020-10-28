@@ -77,7 +77,8 @@ func printLogHeader(c *AppConfig) {
 			Str("build-time", BuildTime).
 			Str("profile", profile).
 			Str("config-url", configUrl).
-			Str("config-branch", configBranch)
+			Str("config-branch", configBranch).
+			Send()
 	}
 }
 
