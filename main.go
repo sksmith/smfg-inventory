@@ -21,16 +21,22 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 )
+const (
+	AppName = "smfg-inventory"
+)
+var (
+	AppVersion string
+	Sha1Version string
+	BuildTime string
 
-var dbPool *pgxpool.Pool
-var config *AppConfig
+	dbPool *pgxpool.Pool
+	config *AppConfig
 
-var configUrl = os.Getenv("SMFG_CONFIG_SERVER_URL")
-var configBranch = os.Getenv("SMFG_CONFIG_SERVER_BRANCH")
-var profile = os.Getenv("SMFG_PROFILE")
-
-const AppName = "smfg-inventory"
-const AppVersion = "v0.0.1"
+	configUrl = os.Getenv("SMFG_CONFIG_SERVER_URL")
+	configBranch = os.Getenv("SMFG_CONFIG_SERVER_BRANCH")
+	profile = os.Getenv("SMFG_PROFILE")
+	
+)
 
 func main() {
 	ctx := context.Background()
@@ -58,13 +64,17 @@ func printLogHeader(c *AppConfig) {
 	if c.LogText {
 		log.Info().Msg("=============================================")
 		log.Info().Msg(fmt.Sprintf("    Application: %s", AppName))
-		log.Info().Msg(fmt.Sprintf("        Version: %s", AppVersion))
 		log.Info().Msg(fmt.Sprintf("        Profile: %s", profile))
 		log.Info().Msg(fmt.Sprintf("  Config Server: %s - %s", configUrl, configBranch))
+		log.Info().Msg(fmt.Sprintf("    Tag Version: %s", AppVersion))
+		log.Info().Msg(fmt.Sprintf("   Sha1 Version: %s", Sha1Version))
+		log.Info().Msg(fmt.Sprintf("     Build Time: %s", BuildTime))
 		log.Info().Msg("=============================================")
 	} else {
 		log.Info().Str("application", AppName).
 			Str("version", AppVersion).
+			Str("sha1ver", Sha1Version).
+			Str("build-time", BuildTime).
 			Str("profile", profile).
 			Str("config-url", configUrl).
 			Str("config-branch", configBranch)

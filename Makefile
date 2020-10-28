@@ -1,14 +1,19 @@
+VER := $(shell git describe --tag)
+SHA1 := $(shell git rev-parse HEAD)
+NOW := $(shell date +'%Y-%m-%d_%T') 
+
 build:
-    echo "Building the binary"
-	go build -o bin/smfg-inventory .
+	@echo Building the binary
+	go build -ldflags "-X main.AppVersion=$(VER) -X main.Sha1Version=$(SHA1) -X main.BuildTime=$(NOW)" -o bin/smfg-inventory .
 
 test:
-    go test -v ./...
+	go test -v ./...
 
 run:
-    echo "executing the application"
+	echo "executing the application"
 	go run .
 
+
+
 publish:
-    VER=$(shell echo git describe --tag)
-    echo VER
+	@echo $(VER)
