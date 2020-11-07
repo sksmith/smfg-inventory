@@ -42,16 +42,20 @@ func main() {
 	ctx := context.Background()
 
 	var err error
+	log.Info().Msg("loading configurations...")
 	config, err = LoadConfigs(configUrl, configBranch, profile)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to load configurations")
 	}
+	log.Info().Msg("configuring logging...")
 	configLogging()
 	printLogHeader(config)
 
+	log.Info().Msg("connecting to the database...")
 	configDatabase(ctx)
 	r := configureRouter()
 
+	log.Info().Msg("generating configurations...")
 	if config.GenerateRoutes {
 		createRouteDocs(r)
 	}
