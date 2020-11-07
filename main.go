@@ -147,6 +147,7 @@ func inventoryApi(r chi.Router) {
 	var queue inventory.Queue
 	var err error
 
+	log.Info("connecting to rabbitmq...")
 	for {
 		queue, err = inventory.NewRabbitClient(
 			config.QName,
@@ -155,7 +156,12 @@ func inventoryApi(r chi.Router) {
 			config.QHost,
 			config.QPort)
 		if err != nil {
-			log.Error().Err(err).Msg("failed to connect to rabbitmq... retrying")
+			log.Error().Err(err)
+				.Str("name", config.QName)
+				.Str("user", config.QUser)
+				.Str("host", config.QHost)
+				.Str("port", config.QPort)
+				.Msg("failed to connect to rabbitmq... retrying")
 			time.Sleep(1 * time.Second)
 			continue
 		}
