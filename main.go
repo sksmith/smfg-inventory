@@ -134,11 +134,7 @@ func configureRouter() chi.Router {
 func inventoryApi(r chi.Router) {
 	var repo inventory.Repository
 
-	if config.InMemoryDb {
-		repo = inventory.NewMemoryRepo()
-	} else {
-		repo = inventory.NewPostgresRepo(dbPool)
-	}
+	repo = inventory.NewPostgresRepo(dbPool)
 
 	var queue inventory.Queue
 	var err error

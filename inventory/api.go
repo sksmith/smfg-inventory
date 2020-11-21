@@ -168,6 +168,37 @@ func (p *ProductionEventResponse) Bind(_ *http.Request) error {
 	return nil
 }
 
+type ReservationRequest struct {
+	*Reservation
+
+	ProtectedID string `json:"id"`
+	ProtectedState string `json:"state"`
+}
+
+func (r *ReservationRequest) Bind(_ *http.Request) error {
+	if r.Reservation == nil {
+		return errors.New("missing required Reservation fields")
+	}
+
+	return nil
+}
+
+type ReservationResponse struct {
+	*Reservation
+}
+
+func (r *ReservationResponse) Bind(_ *http.Request) error {
+	if r.Reservation == nil {
+		return errors.New("missing required Reservation fields")
+	}
+
+	return nil
+}
+
+func (r *ReservationResponse) Render(_ http.ResponseWriter, _ *http.Request) error {
+	return nil
+}
+
 func (a *Api) CreateProductionEvent(w http.ResponseWriter, r *http.Request) {
 	product := r.Context().Value("product").(Product)
 
@@ -222,8 +253,24 @@ func (a *Api) ReservationCtx(next http.Handler) http.Handler {
 	})
 }
 
-func (a *Api) CreateReservation(_ http.ResponseWriter, _ *http.Request) {
-	 //:= r.Context().Value("article").(*main.Article)
-	// Not implemented
+func (a *Api) CreateReservation(w http.ResponseWriter, r *http.Request) {
+	product := r.Context().Value("product").(Product)
+
+	data := &ReservationRequest{}
+	if err := render.Bind(r, data); err != nil {
+		api.Render(w, r, api.ErrInvalidRequest(err))
+		return
+	}
+
+	err := a.service.Reserve(r.Context(), product, data.Reservation)
+	if err != nil {
+		log.Err(err).Send()
+		api.Render(w, r, api.ErrInternalServerError())
+	}
+
+	resp := &ReservationResponse{Reservation: data.Reservation}
+	render.Status(r, http.StatusCreated)
+	api.Render(w, r, resp)
+
 	return
 }

@@ -1,12 +1,11 @@
 // This rudimentary model represents a fictional inventory tracking system for a factory. A real factory would obviously
 // need much more fine grained detail and would probably use a different ubiquitous language.
-//
-// 0 = Product.Available + Product.Reserved + ShipmentDetail.Quantity - ProductionEvent.Quantity
 package inventory
 
 import (
 	"context"
 	"github.com/rs/zerolog/log"
+	"github.com/sksmith/smfg-inventory/db"
 	"time"
 )
 
@@ -16,7 +15,7 @@ func NewService(repo Repository, queue Queue) *service {
 
 type Service interface {
 	Produce(ctx context.Context, product Product, qty int64) error
-	Reserve(ctx context.Context, product Product, qty int64) error
+	Reserve(ctx context.Context, product Product, res *Reservation) error
 	GetAllProducts(ctx context.Context, limit, offset int) ([]Product, error)
 	GetProduct(ctx context.Context, sku string) (Product, error)
 	CreateProduct(ctx context.Context, product Product) error
@@ -44,32 +43,26 @@ func (s *service) Produce(ctx context.Context, product Product, qty int64) error
 	}
 
 	if err = s.repo.SaveProductionEvent(ctx, evt, tx); err != nil {
-		rberr := tx.Rollback(ctx)
-		if rberr != nil {
-			log.Warn().Err(err).Msg("failed to rollback save production event")
-		}
+		rollback(ctx, tx, err)
 		return err
 	}
 
 	// Increase product available inventory
 	product.Available += qty
 	if err = s.repo.SaveProduct(ctx, product, tx); err != nil {
-		rberr := tx.Rollback(ctx)
-		if rberr != nil {
-			log.Warn().Err(err).Str("sku", product.Sku).Msg("failed to rollback save production event")
-		}
+		rollback(ctx, tx, err)
 		return err
 	}
 
 	if err = s.queue.Send(product, Exchange("inventory.fanout")); err != nil {
-		rberr := tx.Rollback(ctx)
-		if rberr != nil {
-			log.Warn().Err(err).Str("sku", product.Sku).Msg("failed to rollback save production event")
-		}
+		rollback(ctx, tx, err)
 		return err
 	}
 
-	// Check reservations
+	if err = s.fillReserves(ctx, product); err != nil {
+		return err
+	}
+
 	if err = tx.Commit(ctx); err != nil {
 		return err
 	}
@@ -77,9 +70,110 @@ func (s *service) Produce(ctx context.Context, product Product, qty int64) error
 	return nil
 }
 
-func (s *service) Reserve(_ context.Context, _ Product, _ int64) error {
-	//res := Reservation{CustomerID: }
+func (s *service) Reserve(ctx context.Context, pr Product, res *Reservation) error {
+	tx, err := s.repo.BeginTransaction(ctx)
+	if err != nil {
+		return err
+	}
+
+	res.State = Open
+	res.Created = time.Now()
+
+	if err = s.repo.SaveReservation(ctx, res, tx); err != nil {
+		rollback(ctx, tx, err)
+		return err
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return err
+	}
+
+	if err = s.fillReserves(ctx, pr); err != nil {
+		rollback(ctx, tx, err)
+		return err
+	}
+
 	return nil
+}
+
+func (s *service) fillReserves(ctx context.Context, product Product) error {
+	or, err := s.repo.GetSkuReservesByState(ctx, product.Sku, Open, 100, 0)
+	if err != nil {
+		return err
+	}
+	for _, reservation := range or {
+		if product.Available == 0 {
+			break
+		}
+
+		remaining := reservation.RequestedQuantity - reservation.ReservedQuantity
+		reserveAmount := remaining
+		if remaining > product.Available {
+			reserveAmount = product.Available
+		}
+		product.Available -= reserveAmount
+		product.Reserved += reserveAmount
+		reservation.ReservedQuantity += reserveAmount
+
+		closed := false
+		if reservation.ReservedQuantity == reservation.RequestedQuantity {
+			if err := s.closeReservation(&product, &reservation); err != nil {
+				return err
+			}
+			closed = true
+		}
+
+		tx, err := s.repo.BeginTransaction(ctx)
+		if err != nil {
+			return err
+		}
+
+		err = s.repo.SaveProduct(ctx, product, tx)
+		if err != nil {
+			rollback(ctx, tx, err)
+			return err
+		}
+
+		err = s.repo.SaveReservation(ctx, &reservation, tx)
+		if err != nil {
+			rollback(ctx, tx, err)
+			return err
+		}
+
+		if closed {
+			err := s.queue.Send(reservation, Exchange("reservation.filled.fanout"))
+			if err != nil {
+				rollback(ctx, tx, err)
+				return err
+			}
+		}
+		if err = tx.Commit(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *service) closeReservation(product *Product, reservation *Reservation) error {
+	reservation.State = Closed
+	product.Reserved -= reservation.RequestedQuantity
+	return nil
+}
+
+func rollback(ctx context.Context, tx db.Transaction, err error) {
+	rerr := tx.Rollback(ctx)
+	if rerr != nil {
+		log.Warn().Err(err).Msg("failed to rollback")
+	}
+}
+
+func (s *service) getTx(ctx context.Context, txs ...db.Transaction) (tx db.Transaction, err error) {
+	if len(txs) > 0 {
+		tx = txs[0]
+	} else {
+		tx, err = s.repo.BeginTransaction(ctx)
+	}
+	return tx, err
 }
 
 func (s *service) GetAllProducts(ctx context.Context, limit, offset int) ([]Product, error) {
@@ -107,38 +201,20 @@ type Product struct {
 	Reserved int64 `json:"reserved"`
 }
 
+type ReserveState string
+
+const(
+	Open ReserveState = "Open"
+	Closed = "Closed"
+)
+
 // Reservation is an entity. An amount of inventory set aside for a given Customer.
 type Reservation struct {
 	ID uint64
-	CustomerID uint64
-	Details []ProductReservation
-}
-
-// ProductReservation is a value object. It's used for tracking inventory set aside for a Customer.
-type ProductReservation struct {
+	Requester string
 	Sku string
-	RequestedAmount int64
-	ReservedAmount int64
-}
-
-// Shipment is an entity. An amount of inventory shipped to a Customer. All shipments of product should be tied to
-// a reservation.
-type Shipment struct {
-	ID uint64
-	ReservationID uint64
-	Details []ShipmentDetail
-}
-
-// ShipmentDetail is an entity. It tracks quantities of Products on a given shipment.
-type ShipmentDetail struct {
-	ID uint64
-	ShipmentID uint64
-	Sku string
-	Quantity int64
-}
-
-// Customer is an entity. A company or individual who pays for our services.
-type Customer struct {
-	ID uint64
-	Name string
+	State ReserveState
+	ReservedQuantity int64
+	RequestedQuantity int64
+	Created time.Time `json:"created"`
 }

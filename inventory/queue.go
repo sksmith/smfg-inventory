@@ -81,10 +81,10 @@ type messageOptions struct {
 	immediate bool
 }
 
-func (r *rabbitClient) Close() error {
-	r.ch.Close()
-	r.conn.Close()
-	return nil
+func (r *rabbitClient) Close() (chErr error, cnErr error) {
+	chErr = r.ch.Close()
+	cnErr = r.conn.Close()
+	return chErr, cnErr
 }
 
 func (r *rabbitClient) Send(body interface{}, options ...MessageOption) error {

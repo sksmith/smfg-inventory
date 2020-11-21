@@ -113,6 +113,68 @@ func (d *dbRepo) GetAllProducts(ctx context.Context, limit int, offset int, txs 
 	return products, nil
 }
 
+func (d *dbRepo) SaveReservation(ctx context.Context, r *Reservation, txs ...db.Transaction) error {
+	m := db.StartMetric("SaveReservation")
+	tx := d.conn
+	if len(txs) > 0 {
+		tx = txs[0]
+	}
+	ct, err := tx.Exec(ctx,`
+		UPDATE reservations
+           SET requester = $2, sku = $3, state = $4, reserved_quantity = $5, requested_quantity
+         WHERE id = $1;`,
+		r.ID, r.Requester, r.Sku, r.State, r.ReservedQuantity, r.RequestedQuantity)
+	if err != nil {
+		m.Complete(nil)
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		insert := ` INSERT INTO reservations (requester, sku, state, reserved_quantity, requested_quantity)
+                      VALUES ($1, $2, $3, $4, $5) RETURNING id;`
+		err = tx.QueryRow(ctx, insert, r.Requester, r.Sku, r.State, r.ReservedQuantity, r.RequestedQuantity).Scan(&r.ID)
+		m.Complete(err)
+		if err != nil {
+			return err
+		}
+	}
+	m.Complete(nil)
+	return nil
+}
+
+func (d *dbRepo) GetSkuReservesByState(ctx context.Context, sku string, state ReserveState, limit, offset int, txs ...db.Transaction) ([]Reservation, error) {
+	m := db.StartMetric("GetSkuOpenReserves")
+	tx := d.conn
+	if len(txs) > 0 {
+		tx = txs[0]
+	}
+
+	reservations := make([]Reservation, 0)
+	rows, err := tx.Query(ctx,
+		`SELECT id, requester, sku, state, reserved_quantity, requested_quantity 
+               FROM reservations
+              WHERE sku = $1 AND state = $2
+           ORDER BY created ASC LIMIT $3 OFFSET $4;`,
+		sku, state, limit, offset)
+	if err != nil {
+		m.Complete(err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		r := Reservation{}
+		err = rows.Scan(&r.ID, &r.Requester, &r.Sku, &r.State, &r.ReservedQuantity, &r.RequestedQuantity)
+		if err != nil {
+			m.Complete(err)
+			return nil, err
+		}
+		reservations = append(reservations, r)
+	}
+
+	m.Complete(nil)
+	return reservations, nil
+}
+
 func (d *dbRepo) BeginTransaction(ctx context.Context) (db.Transaction, error) {
 	return d.conn.Begin(ctx)
 }
