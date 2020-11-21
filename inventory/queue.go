@@ -63,7 +63,7 @@ func init() {
 
 type Queue interface {
 	Send(body interface{}, options ...MessageOption) error
-	Close() error
+	Close() (error, error)
 }
 
 type rabbitClient struct {
