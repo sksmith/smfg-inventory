@@ -117,7 +117,7 @@ func (d *dbRepo) GetProductionEventByRequestID(ctx context.Context, requestID st
 	}
 
 	pe = ProductionEvent{}
-	err = tx.QueryRow(ctx, `SELECT request_id, sku, quantity, created WHERE request_id = $1`, requestID).
+	err = tx.QueryRow(ctx, `SELECT request_id, sku, quantity, created FROM production_events WHERE request_id = $1`, requestID).
 		Scan(&pe.RequestID, &pe.Sku, &pe.Quantity, &pe.Created)
 
 	if err != nil {

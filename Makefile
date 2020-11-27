@@ -15,3 +15,6 @@ run:
 
 publish:
 	@echo $(VER)
+
+docker:
+	docker buildx build --platform linux/arm64 -t docker.seanksmith.me/smfg-inventory:v1.0.0 --push .
