@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
+	"github.com/pkg/errors"
 	"github.com/sksmith/smfg-inventory/db"
 )
 
@@ -42,7 +43,7 @@ func (d *dbRepo) SaveProduct(ctx context.Context, product Product, txs ...db.Tra
 		product.Sku, product.Upc, product.Name, product.Available, product.Reserved)
 	if err != nil {
 		m.Complete(nil)
-		return err
+		return errors.WithStack(err)
 	}
 	if ct.RowsAffected() == 0 {
 		_, err := tx.Exec(ctx,`
@@ -71,7 +72,7 @@ func (d *dbRepo) GetProduct(ctx context.Context, sku string, txs ...db.Transacti
 
 	if err != nil {
 		m.Complete(err)
-		return product, err
+		return product, errors.WithStack(err)
 	}
 
 	m.Complete(nil)
@@ -91,7 +92,7 @@ func (d *dbRepo) GetAllProducts(ctx context.Context, limit int, offset int, txs 
 		limit, offset)
 	if err != nil {
 		m.Complete(err)
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	defer rows.Close()
 
@@ -100,7 +101,7 @@ func (d *dbRepo) GetAllProducts(ctx context.Context, limit int, offset int, txs 
 		err = rows.Scan(&product.Sku, &product.Upc, &product.Name, &product.Available, &product.Reserved)
 		if err != nil {
 			m.Complete(err)
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		products = append(products, product)
 	}
@@ -122,7 +123,7 @@ func (d *dbRepo) GetProductionEventByRequestID(ctx context.Context, requestID st
 
 	if err != nil {
 		m.Complete(err)
-		return pe, err
+		return pe, errors.WithStack(err)
 	}
 
 	m.Complete(nil)
@@ -141,7 +142,7 @@ func (d *dbRepo) SaveProductionEvent(ctx context.Context, event *ProductionEvent
 	err := tx.QueryRow(ctx, insert, event.RequestID, event.Sku, event.Quantity, event.Created).Scan(&event.ID)
 	if err != nil {
 		m.Complete(err)
-		return err
+		return errors.WithStack(err)
 	}
 	m.Complete(nil)
 	return nil
@@ -158,8 +159,8 @@ func (d *dbRepo) SaveReservation(ctx context.Context, r *Reservation, txs ...db.
 	err := tx.QueryRow(ctx, insert, r.Requester, r.Sku, r.State, r.ReservedQuantity, r.RequestedQuantity).Scan(&r.ID)
 	m.Complete(err)
 	if err != nil {
-			return err
-		}
+		return errors.WithStack(err)
+	}
 	m.Complete(nil)
 	return nil
 }
@@ -174,7 +175,7 @@ func (d *dbRepo) UpdateReservation(ctx context.Context, ID uint64, state Reserve
 	_, err := tx.Exec(ctx, update, ID, state, qty)
 	m.Complete(err)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	m.Complete(nil)
 	return nil
@@ -196,7 +197,7 @@ func (d *dbRepo) GetSkuReservationsByState(ctx context.Context, sku string, stat
 		sku, state, limit, offset)
 	if err != nil {
 		m.Complete(err)
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	defer rows.Close()
 

@@ -11,7 +11,7 @@ require (
 	github.com/influxdata/tdigest v0.0.1 // indirect
 	github.com/jackc/pgconn v1.7.0
 	github.com/jackc/pgx/v4 v4.9.0
-	github.com/mailru/easyjson v0.7.6 // indirect
+	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.7.1
 	github.com/rs/zerolog v1.20.0
 	github.com/sksmith/go-spring-config v0.0.0-20201006124818-37e3a774bfd9
