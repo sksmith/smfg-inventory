@@ -138,14 +138,17 @@ func (s *service) Reserve(ctx context.Context, pr Product, res *Reservation) err
 	log.Debug().Str("func", funcName).Str("requestId", res.RequestID).Msg("getting reservation")
 	dbRes, err := s.repo.GetReservationByRequestID(ctx, res.RequestID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		rollback(ctx, tx, err)
 		return err
 	}
 	if dbRes.RequestID != "" {
 		log.Debug().Str("func", funcName).Str("requestId", res.RequestID).Msg("reservation found, returning it")
 		err = copier.Copy(res, &dbRes)
 		if err != nil {
+			rollback(ctx, tx, err)
 			return errors.WithMessage(err, "failed to copy db values into reservation")
 		}
+		rollback(ctx, tx, err)
 		return nil
 	}
 
@@ -164,7 +167,6 @@ func (s *service) Reserve(ctx context.Context, pr Product, res *Reservation) err
 
 	log.Debug().Str("func", funcName).Str("requestId", res.RequestID).Msg("filling reserves")
 	if err = s.fillReserves(ctx, pr); err != nil {
-		rollback(ctx, tx, err)
 		return errors.WithStack(err)
 	}
 
