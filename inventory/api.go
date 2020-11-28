@@ -228,6 +228,7 @@ func (a *Api) CreateProductionEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	render.Status(r, http.StatusCreated)
 	api.Render(w, r, &ProductionEventResponse{data.ProductionEvent})
 
 	return

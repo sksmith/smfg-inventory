@@ -199,6 +199,10 @@ func TestCreateProductionEvent(t *testing.T) {
 		return testProducts[0], nil
 	}
 
+	mockRepo.GetProductionEventByRequestIDFunc = func(ctx context.Context, requestID string, tx ...db.Transaction) (pe inventory.ProductionEvent, err error) {
+		return pe, sql.ErrNoRows
+	}
+
 	mockRepo.SaveProductionEventFunc = func(ctx context.Context, event *inventory.ProductionEvent, tx ...db.Transaction) error {
 		if event.ID != 0 {
 			t.Errorf("id should be ignored on creation got=%d want=%d", event.ID, 0)
@@ -240,6 +244,10 @@ func TestCreateProductionEvent(t *testing.T) {
 	_ = res.Body.Close()
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	if res.StatusCode != 201 {
+		t.Errorf("unexpected status code got=%d want=%d", res.StatusCode, 201)
 	}
 
 	resp := &inventory.ProductionEventResponse{}

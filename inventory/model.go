@@ -4,6 +4,7 @@ package inventory
 
 import (
 	"context"
+	"database/sql"
 	"github.com/rs/zerolog/log"
 	"github.com/sksmith/smfg-inventory/db"
 	"time"
@@ -37,7 +38,7 @@ func (s *service) Produce(ctx context.Context, product Product, event *Productio
 	}
 
 	dbEvent, err := s.repo.GetProductionEventByRequestID(ctx, event.RequestID, tx)
-	if err != nil {
+	if err != nil && err != sql.ErrNoRows {
 		return err
 	}
 	if dbEvent.RequestID != "" {
