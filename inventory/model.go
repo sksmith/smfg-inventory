@@ -5,6 +5,7 @@ package inventory
 import (
 	"context"
 	"database/sql"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/sksmith/smfg-inventory/db"
 	"time"
@@ -28,19 +29,24 @@ type service struct {
 }
 
 func (s *service) CreateProduct(ctx context.Context, product Product) error {
-	return s.repo.SaveProduct(ctx, product)
+	err := s.repo.SaveProduct(ctx, product)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
 }
 
 func (s *service) Produce(ctx context.Context, product Product, event *ProductionEvent) error {
 	tx, err := s.repo.BeginTransaction(ctx)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	dbEvent, err := s.repo.GetProductionEventByRequestID(ctx, event.RequestID, tx)
 	if err != nil && err != sql.ErrNoRows {
-		return err
+		return errors.WithStack(err)
 	}
+
 	if dbEvent.RequestID != "" {
 		event.ID = dbEvent.ID
 		event.Created = dbEvent.Created
@@ -54,29 +60,29 @@ func (s *service) Produce(ctx context.Context, product Product, event *Productio
 
 	if err = s.repo.SaveProductionEvent(ctx, event, tx); err != nil {
 		rollback(ctx, tx, err)
-		return err
+		return errors.WithStack(err)
 	}
 
 	// Increase product available inventory
 	product.Available += event.Quantity
 	if err = s.repo.SaveProduct(ctx, product, tx); err != nil {
 		rollback(ctx, tx, err)
-		return err
+		return errors.WithStack(err)
 	}
 
 	if err = s.queue.Send(product, Exchange("inventory.fanout")); err != nil {
 		rollback(ctx, tx, err)
-		return err
+		return errors.WithStack(err)
 	}
 
 	if err = s.fillReserves(ctx, product); err != nil {
 		rollback(ctx, tx, err)
-		return err
+		return errors.WithStack(err)
 	}
 
 	if err = tx.Commit(ctx); err != nil {
 		rollback(ctx, tx, err)
-		return err
+		return errors.WithStack(err)
 	}
 
 	return nil
@@ -85,7 +91,7 @@ func (s *service) Produce(ctx context.Context, product Product, event *Productio
 func (s *service) Reserve(ctx context.Context, pr Product, res *Reservation) error {
 	tx, err := s.repo.BeginTransaction(ctx)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	res.State = Open
@@ -93,16 +99,16 @@ func (s *service) Reserve(ctx context.Context, pr Product, res *Reservation) err
 
 	if err = s.repo.SaveReservation(ctx, res, tx); err != nil {
 		rollback(ctx, tx, err)
-		return err
+		return errors.WithStack(err)
 	}
 
 	if err = tx.Commit(ctx); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	if err = s.fillReserves(ctx, pr); err != nil {
 		rollback(ctx, tx, err)
-		return err
+		return errors.WithStack(err)
 	}
 
 	return nil
@@ -111,7 +117,7 @@ func (s *service) Reserve(ctx context.Context, pr Product, res *Reservation) err
 func (s *service) fillReserves(ctx context.Context, product Product) error {
 	or, err := s.repo.GetSkuReservationsByState(ctx, product.Sku, Open, 100, 0)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	for _, reservation := range or {
 		if product.Available == 0 {
@@ -130,37 +136,37 @@ func (s *service) fillReserves(ctx context.Context, product Product) error {
 		closed := false
 		if reservation.ReservedQuantity == reservation.RequestedQuantity {
 			if err := s.closeReservation(&product, &reservation); err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			closed = true
 		}
 
 		tx, err := s.repo.BeginTransaction(ctx)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 
 		err = s.repo.SaveProduct(ctx, product, tx)
 		if err != nil {
 			rollback(ctx, tx, err)
-			return err
+			return errors.WithStack(err)
 		}
 
 		err = s.repo.UpdateReservation(ctx, reservation.ID, reservation.State, reservation.ReservedQuantity, tx)
 		if err != nil {
 			rollback(ctx, tx, err)
-			return err
+			return errors.WithStack(err)
 		}
 
 		if closed {
 			err := s.queue.Send(reservation, Exchange("reservation.filled.fanout"))
 			if err != nil {
 				rollback(ctx, tx, err)
-				return err
+				return errors.WithStack(err)
 			}
 		}
 		if err = tx.Commit(ctx); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return nil
