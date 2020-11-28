@@ -6,12 +6,13 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"time"
+
 	"github.com/jinzhu/copier"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/sksmith/bunnyq"
 	"github.com/sksmith/smfg-inventory/db"
-	"time"
 )
 
 func NewService(repo Repository, bq Queue, invExchange, resExchange string) *service {
@@ -46,6 +47,9 @@ func (s *service) CreateProduct(ctx context.Context, product Product) error {
 }
 
 func (s *service) Produce(ctx context.Context, product Product, event *ProductionEvent) error {
+	const funcName = "Produce"
+
+	log.Trace().Str("func", funcName).Str("sku", event.Sku).Str("requestId", event.RequestID).Int64("quantity", event.Quantity).Msg("producing")
 	if event == nil {
 		return errors.New("event is required")
 	}
@@ -61,12 +65,14 @@ func (s *service) Produce(ctx context.Context, product Product, event *Productio
 		return errors.New("quantity must be greater than zero")
 	}
 
+	log.Debug().Str("func", funcName).Str("requestId", event.RequestID).Msg("getting production event")
 	dbEvent, err := s.repo.GetProductionEventByRequestID(ctx, event.RequestID, tx)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return errors.WithStack(err)
 	}
 
 	if dbEvent.RequestID != "" {
+		log.Debug().Str("func", funcName).Str("requestId", event.RequestID).Msg("production request already exists, returning it")
 		if err := copier.Copy(event, &dbEvent); err != nil {
 			return err
 		}
@@ -76,6 +82,7 @@ func (s *service) Produce(ctx context.Context, product Product, event *Productio
 	event.Sku = product.Sku
 	event.Created = time.Now()
 
+	log.Debug().Str("func", funcName).Str("requestId", event.RequestID).Msg("persisting production event")
 	if err = s.repo.SaveProductionEvent(ctx, event, tx); err != nil {
 		rollback(ctx, tx, err)
 		return errors.WithMessage(err, "failed to save production event")
@@ -83,11 +90,13 @@ func (s *service) Produce(ctx context.Context, product Product, event *Productio
 
 	// Increase product available inventory
 	product.Available += event.Quantity
+	log.Debug().Str("func", funcName).Str("requestId", event.RequestID).Msg("persisting product")
 	if err = s.repo.SaveProduct(ctx, product, tx); err != nil {
 		rollback(ctx, tx, err)
 		return errors.WithMessage(err, "failed to add production to product")
 	}
 
+	log.Debug().Str("func", funcName).Str("requestId", event.RequestID).Msg("publishing inventory")
 	err = s.publishInventory(ctx, product)
 	if err != nil {
 		rollback(ctx, tx, err)
@@ -99,6 +108,7 @@ func (s *service) Produce(ctx context.Context, product Product, event *Productio
 		return errors.WithMessage(err, "failed to commit production transaction")
 	}
 
+	log.Debug().Str("func", funcName).Str("requestId", event.RequestID).Msg("filling reserves")
 	if err = s.fillReserves(ctx, product); err != nil {
 		rollback(ctx, tx, err)
 		return errors.WithMessage(err, "failed to fill reserves after production")
@@ -119,16 +129,19 @@ func (s *service) publishInventory(ctx context.Context, product Product) error {
 }
 
 func (s *service) Reserve(ctx context.Context, pr Product, res *Reservation) error {
+	const funcName = "Reserve"
 	tx, err := s.repo.BeginTransaction(ctx)
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
+	log.Debug().Str("func", funcName).Str("requestId", res.RequestID).Msg("getting reservation")
 	dbRes, err := s.repo.GetReservationByRequestID(ctx, res.RequestID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
 	if dbRes.RequestID != "" {
+		log.Debug().Str("func", funcName).Str("requestId", res.RequestID).Msg("reservation found, returning it")
 		err = copier.Copy(res, &dbRes)
 		if err != nil {
 			return errors.WithMessage(err, "failed to copy db values into reservation")
@@ -139,6 +152,7 @@ func (s *service) Reserve(ctx context.Context, pr Product, res *Reservation) err
 	res.State = Open
 	res.Created = time.Now()
 
+	log.Debug().Str("func", funcName).Str("requestId", res.RequestID).Msg("saving reservation")
 	if err = s.repo.SaveReservation(ctx, res, tx); err != nil {
 		rollback(ctx, tx, err)
 		return errors.WithStack(err)
@@ -148,6 +162,7 @@ func (s *service) Reserve(ctx context.Context, pr Product, res *Reservation) err
 		return errors.WithStack(err)
 	}
 
+	log.Debug().Str("func", funcName).Str("requestId", res.RequestID).Msg("filling reserves")
 	if err = s.fillReserves(ctx, pr); err != nil {
 		rollback(ctx, tx, err)
 		return errors.WithStack(err)
@@ -157,12 +172,18 @@ func (s *service) Reserve(ctx context.Context, pr Product, res *Reservation) err
 }
 
 func (s *service) fillReserves(ctx context.Context, product Product) error {
+	const funcName = "fillReserves"
+	log.Info().Str("func", funcName).Str("sku", product.Sku).Msg("filling reserves")
+
+	log.Debug().Str("func", funcName).Str("sku", product.Sku).Msg("getting open reservations")
 	or, err := s.repo.GetSkuReservationsByState(ctx, product.Sku, Open, 100, 0)
 	if err != nil {
 		return errors.WithStack(err)
 	}
 	for _, reservation := range or {
+		log.Trace().Str("func", funcName).Str("sku", product.Sku).Str("reservation.RequestID", reservation.RequestID).Msg("fulfilling reservation")
 		if product.Available == 0 {
+			log.Trace().Str("func", funcName).Str("sku", product.Sku).Str("reservation.RequestID", reservation.RequestID).Msg("no more available inventory")
 			break
 		}
 
@@ -182,24 +203,32 @@ func (s *service) fillReserves(ctx context.Context, product Product) error {
 			}
 			closed = true
 		}
+		if closed {
+			log.Debug().Str("func", funcName).Str("sku", product.Sku).Str("reservation.RequestID", reservation.RequestID).Msg("closed")
+		} else {
+			log.Debug().Str("func", funcName).Str("sku", product.Sku).Str("reservation.RequestID", reservation.RequestID).Msg("still open")
+		}
 
 		tx, err := s.repo.BeginTransaction(ctx)
 		if err != nil {
 			return errors.WithStack(err)
 		}
 
+		log.Debug().Str("func", funcName).Str("sku", product.Sku).Str("reservation.RequestID", reservation.RequestID).Msg("saving product")
 		err = s.repo.SaveProduct(ctx, product, tx)
 		if err != nil {
 			rollback(ctx, tx, err)
 			return errors.WithStack(err)
 		}
 
+		log.Debug().Str("func", funcName).Str("sku", product.Sku).Str("reservation.RequestID", reservation.RequestID).Msg("updating reservation")
 		err = s.repo.UpdateReservation(ctx, reservation.ID, reservation.State, reservation.ReservedQuantity, tx)
 		if err != nil {
 			rollback(ctx, tx, err)
 			return errors.WithStack(err)
 		}
 
+		log.Debug().Str("func", funcName).Str("sku", product.Sku).Str("reservation.RequestID", reservation.RequestID).Msg("publishing inventory")
 		err = s.publishInventory(ctx, product)
 		if err != nil {
 			rollback(ctx, tx, err)
@@ -207,6 +236,7 @@ func (s *service) fillReserves(ctx context.Context, product Product) error {
 		}
 
 		if closed {
+			log.Debug().Str("func", funcName).Str("sku", product.Sku).Str("reservation.RequestID", reservation.RequestID).Msg("publishing reservation")
 			err := s.publishReservation(ctx, reservation)
 			if err != nil {
 				rollback(ctx, tx, err)
