@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS reservations(
     id SERIAL PRIMARY KEY,
-    requester VARCHAR(50),
+    request_id VARCHAR(200) NOT NULL,
+    requester VARCHAR(50) NOT NULL,
     sku VARCHAR(50) NOT NULL,
     state VARCHAR(50) NOT NULL,
     reserved_quantity INTEGER,

@@ -17,4 +17,5 @@ require (
 	github.com/sksmith/go-spring-config v0.0.0-20201006124818-37e3a774bfd9
 	github.com/streadway/amqp v1.0.0
 	github.com/tsenart/go-tsz v0.0.0-20180814235614-0bd30b3df1c3 // indirect
+	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
 )

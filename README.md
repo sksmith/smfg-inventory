@@ -52,4 +52,6 @@ I'm using the migrate project to manage database migrations.
 migrate create -ext sql -dir db/migrations -seq create_products_table
 
 migrate -database postgres://postgres:postgres@localhost:5432/smfg-db?sslmode=disable -path db/migrations up
+
+migrate -source file://db/migrations -database postgres://localhost:5432/database down
 ```

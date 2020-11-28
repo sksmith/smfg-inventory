@@ -42,7 +42,6 @@ func ConnectDb(ctx context.Context, url string) (*pgxpool.Pool, error) {
 		return nil, err
 	}
 
-
 	return pool, nil
 }
 
@@ -57,13 +56,13 @@ func (l logger) Log(ctx context.Context, level pgx.LogLevel, msg string, data ma
 	case pgx.LogLevelDebug:
 		evt = log.Debug()
 	case pgx.LogLevelInfo:
-		evt = log.Debug()
+		evt = log.Info()
 	case pgx.LogLevelWarn:
-		evt = log.Debug()
+		evt = log.Warn()
 	case pgx.LogLevelError:
-		evt = log.Debug()
+		evt = log.Error()
 	case pgx.LogLevelNone:
-		evt = log.Debug()
+		evt = log.Info()
 	default:
 		evt = log.Info()
 	}
@@ -78,11 +77,12 @@ func (l logger) Log(ctx context.Context, level pgx.LogLevel, msg string, data ma
 func RunMigrations(host, database, port, user, password string) error {
 	connStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
 		user, password, host, port, database)
-	m, err := migrate.New(
-		"file:/db/migrations",
-		connStr)
+	m, err := migrate.New("file:/db/migrations", connStr)
 	if err != nil {
-		return err
+		m, err = migrate.New("file:db/migrations", connStr)
+		if err != nil {
+			return err
+		}
 	}
 	if err := m.Up(); err != nil {
 		if err != migrate.ErrNoChange {

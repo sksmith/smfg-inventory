@@ -101,10 +101,11 @@ func (a *Api) ProductCtx(next http.Handler) http.Handler {
 		product, err = a.service.GetProduct(r.Context(), sku)
 
 		if err != nil {
-			if err == sql.ErrNoRows {
+			// TODO Create a new custom error, don't use low level errors at this high level
+			if errors.Is(err, sql.ErrNoRows) {
 				api.Render(w, r, api.ErrNotFound)
 			} else {
-				log.Err(err).Str("sku", sku).Msg("error acquiring product")
+				log.Error().Err(err).Str("sku", sku).Msg("error acquiring product")
 				api.Render(w, r, api.ErrInternalServerError())
 			}
 			return
@@ -150,6 +151,12 @@ func (p *CreateProductionEventRequest) Bind(_ *http.Request) error {
 	if p.ProductionEvent == nil {
 		return errors.New("missing required ProductionEvent fields")
 	}
+	if p.RequestID == "" {
+		return errors.New("requestId is required")
+	}
+	if p.Quantity < 1 {
+		return errors.New("quantity must be greater than zero")
+	}
 
 	return nil
 }
@@ -192,6 +199,12 @@ type ReservationRequest struct {
 func (r *ReservationRequest) Bind(_ *http.Request) error {
 	if r.Reservation == nil {
 		return errors.New("missing required Reservation fields")
+	}
+	if r.Requester == "" {
+		return errors.New("requester is required")
+	}
+	if r.RequestedQuantity < 1 {
+		return errors.New("requested quantity must be greater than zero")
 	}
 
 	return nil
@@ -285,6 +298,7 @@ func (a *Api) CreateReservation(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Err(err).Send()
 		api.Render(w, r, api.ErrInternalServerError())
+		return
 	}
 
 	resp := &ReservationResponse{Reservation: data.Reservation}

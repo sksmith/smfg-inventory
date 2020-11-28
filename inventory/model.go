@@ -37,13 +37,23 @@ func (s *service) CreateProduct(ctx context.Context, product Product) error {
 }
 
 func (s *service) Produce(ctx context.Context, product Product, event *ProductionEvent) error {
+	if event == nil {
+		return errors.New("event is required")
+	}
 	tx, err := s.repo.BeginTransaction(ctx)
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
+	if event.RequestID == "" {
+		return errors.New("request id is required")
+	}
+	if event.Quantity < 1 {
+		return errors.New("quantity must be greater than zero")
+	}
+
 	dbEvent, err := s.repo.GetProductionEventByRequestID(ctx, event.RequestID, tx)
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return errors.WithStack(err)
 	}
 
@@ -56,33 +66,34 @@ func (s *service) Produce(ctx context.Context, product Product, event *Productio
 		return nil
 	}
 
+	event.Sku = product.Sku
 	event.Created = time.Now()
 
 	if err = s.repo.SaveProductionEvent(ctx, event, tx); err != nil {
 		rollback(ctx, tx, err)
-		return errors.WithStack(err)
+		return errors.WithMessage(err, "failed to save production event")
 	}
 
 	// Increase product available inventory
 	product.Available += event.Quantity
 	if err = s.repo.SaveProduct(ctx, product, tx); err != nil {
 		rollback(ctx, tx, err)
-		return errors.WithStack(err)
+		return errors.WithMessage(err, "failed to add production to product")
 	}
 
 	if err = s.queue.Send(product, Exchange("inventory.fanout")); err != nil {
 		rollback(ctx, tx, err)
-		return errors.WithStack(err)
-	}
-
-	if err = s.fillReserves(ctx, product); err != nil {
-		rollback(ctx, tx, err)
-		return errors.WithStack(err)
+		return errors.WithMessage(err, "failed to send inventory update to queue")
 	}
 
 	if err = tx.Commit(ctx); err != nil {
 		rollback(ctx, tx, err)
-		return errors.WithStack(err)
+		return errors.WithMessage(err, "failed to commit production transaction")
+	}
+
+	if err = s.fillReserves(ctx, product); err != nil {
+		rollback(ctx, tx, err)
+		return errors.WithMessage(err, "failed to fill reserves after production")
 	}
 
 	return nil
@@ -92,6 +103,23 @@ func (s *service) Reserve(ctx context.Context, pr Product, res *Reservation) err
 	tx, err := s.repo.BeginTransaction(ctx)
 	if err != nil {
 		return errors.WithStack(err)
+	}
+
+	dbRes, err := s.repo.GetReservationByRequestID(ctx, res.RequestID)
+	if err != nil  {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+	} else {
+		res.RequestedQuantity = dbRes.RequestedQuantity
+		res.Requester = dbRes.Requester
+		res.Sku = dbRes.Sku
+		res.RequestID = dbRes.RequestID
+		res.ReservedQuantity = dbRes.ReservedQuantity
+		res.State = dbRes.State
+		res.ID = dbRes.ID
+		res.Created = dbRes.Created
+		return nil
 	}
 
 	res.State = Open
@@ -199,7 +227,11 @@ func (s *service) GetAllProducts(ctx context.Context, limit, offset int) ([]Prod
 }
 
 func (s *service) GetProduct(ctx context.Context, sku string) (Product, error) {
-	return s.repo.GetProduct(ctx, sku)
+	product, err := s.repo.GetProduct(ctx, sku)
+	if err != nil {
+		return product, errors.WithStack(err)
+	}
+	return product, nil
 }
 
 // ProductionEvent is an entity. An addition to inventory through production of a Product.
@@ -231,6 +263,7 @@ const(
 // Reservation is an entity. An amount of inventory set aside for a given Customer.
 type Reservation struct {
 	ID uint64 `json:"id"`
+	RequestID string `json:"requestId"`
 	Requester string `json:"requester"`
 	Sku string `json:"sku"`
 	State ReserveState `json:"state"`
