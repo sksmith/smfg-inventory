@@ -130,30 +130,28 @@ func (s *service) publishInventory(ctx context.Context, product Product) error {
 
 func (s *service) Reserve(ctx context.Context, pr Product, res *Reservation) error {
 	const funcName = "Reserve"
-	tx, err := s.repo.BeginTransaction(ctx)
-	if err != nil {
-		return errors.WithStack(err)
-	}
 
 	log.Debug().Str("func", funcName).Str("requestId", res.RequestID).Msg("getting reservation")
 	dbRes, err := s.repo.GetReservationByRequestID(ctx, res.RequestID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		rollback(ctx, tx, err)
 		return err
 	}
 	if dbRes.RequestID != "" {
 		log.Debug().Str("func", funcName).Str("requestId", res.RequestID).Msg("reservation found, returning it")
 		err = copier.Copy(res, &dbRes)
 		if err != nil {
-			rollback(ctx, tx, err)
 			return errors.WithMessage(err, "failed to copy db values into reservation")
 		}
-		rollback(ctx, tx, err)
 		return nil
 	}
 
 	res.State = Open
 	res.Created = time.Now()
+
+	tx, err := s.repo.BeginTransaction(ctx)
+	if err != nil {
+		return errors.WithStack(err)
+	}
 
 	log.Debug().Str("func", funcName).Str("requestId", res.RequestID).Msg("saving reservation")
 	if err = s.repo.SaveReservation(ctx, res, tx); err != nil {
