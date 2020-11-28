@@ -14,6 +14,7 @@ import (
 	"github.com/sksmith/smfg-inventory/api"
 	"github.com/sksmith/smfg-inventory/db"
 	"github.com/sksmith/smfg-inventory/inventory"
+	"github.com/sksmith/bunnyq"
 	"net/http"
 	"os"
 	"time"
@@ -75,21 +76,21 @@ func rabbit() inventory.Queue {
 	var err error
 
 	for {
-		queue, err = inventory.NewRabbitClient(
-			config.QName,
-			config.QUser,
-			config.QPass,
-			config.QHost,
-			config.QPort)
-		if err != nil {
-			log.Error().Err(err).Str("name", config.QName).
-				Str("user", config.QUser).
-				Str("host", config.QHost).
-				Str("port", config.QPort).
-				Msg("failed to connect to rabbitmq... retrying")
-			time.Sleep(1 * time.Second)
-			continue
-		}
+		// queue, err = inventory.NewRabbitClient(
+		// 	config.QName,
+		// 	config.QUser,
+		// 	config.QPass,
+		// 	config.QHost,
+		// 	config.QPort)
+		// if err != nil {
+		// 	log.Error().Err(err).Str("name", config.QName).
+		// 		Str("user", config.QUser).
+		// 		Str("host", config.QHost).
+		// 		Str("port", config.QPort).
+		// 		Msg("failed to connect to rabbitmq... retrying")
+		// 	time.Sleep(1 * time.Second)
+		// 	continue
+		// }
 		break
 	}
 
