@@ -187,3 +187,23 @@ func Exclusive(q *queueOptions) {
 func NoWait(q *queueOptions) {
 	q.noWait = true
 }
+
+type MockQueue struct {
+	SendFunc func(body interface{}, options ...MessageOption) error
+	CloseFunc func() (error, error)
+}
+
+func (r MockQueue) Send(body interface{}, options ...MessageOption) error {
+	return r.SendFunc(body, options...)
+}
+
+func (r MockQueue) Close() (error, error) {
+	return r.CloseFunc()
+}
+
+func NewMockQueue() MockQueue {
+	return MockQueue{
+		SendFunc:  func(body interface{}, options ...MessageOption) error { return nil },
+		CloseFunc: func() (error, error) { return nil, nil },
+	}
+}

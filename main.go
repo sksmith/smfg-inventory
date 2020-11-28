@@ -53,7 +53,13 @@ func main() {
 
 	log.Info().Msg("connecting to the database...")
 	configDatabase(ctx)
-	r := configureRouter()
+	repo := inventory.NewPostgresRepo(dbPool)
+
+	log.Info().Msg("connecting to rabbitmq...")
+	queue := rabbit()
+
+	log.Info().Msg("configuring router...")
+	r := configureRouter(queue, repo)
 
 	log.Info().Msg("generating configurations...")
 	if config.GenerateRoutes {
@@ -62,6 +68,32 @@ func main() {
 
 	log.Info().Str("port", config.Port).Msg("listening")
 	log.Fatal().Err(http.ListenAndServe(":" + config.Port, r))
+}
+
+func rabbit() inventory.Queue {
+	var queue inventory.Queue
+	var err error
+
+	for {
+		queue, err = inventory.NewRabbitClient(
+			config.QName,
+			config.QUser,
+			config.QPass,
+			config.QHost,
+			config.QPort)
+		if err != nil {
+			log.Error().Err(err).Str("name", config.QName).
+				Str("user", config.QUser).
+				Str("host", config.QHost).
+				Str("port", config.QPort).
+				Msg("failed to connect to rabbitmq... retrying")
+			time.Sleep(1 * time.Second)
+			continue
+		}
+		break
+	}
+
+	return queue
 }
 
 func printLogHeader(c *AppConfig) {
@@ -118,7 +150,7 @@ func configDatabase(ctx context.Context) {
 	}
 }
 
-func configureRouter() chi.Router {
+func configureRouter(queue inventory.Queue, repo inventory.Repository) chi.Router {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -129,44 +161,18 @@ func configureRouter() chi.Router {
 	r.Use(api.LoggingMiddleware)
 
 	r.Handle("/inventory/metrics", promhttp.Handler())
-	r.Route("/inventory/v1", inventoryApi)
+	r.Route("/inventory/v1", inventoryApi(queue, repo))
 	r.Mount("/inventory/admin", admin.Router())
 
 	return r
 }
 
-func inventoryApi(r chi.Router) {
-	var repo inventory.Repository
-
-	repo = inventory.NewPostgresRepo(dbPool)
-
-	var queue inventory.Queue
-	var err error
-
-	log.Info().Msg("connecting to rabbitmq...")
-	for {
-		queue, err = inventory.NewRabbitClient(
-			config.QName,
-			config.QUser,
-			config.QPass,
-			config.QHost,
-			config.QPort)
-		if err != nil {
-			log.Error().Err(err).Str("name", config.QName).
-			Str("user", config.QUser).
-			Str("host", config.QHost).
-			Str("port", config.QPort).
-			Msg("failed to connect to rabbitmq... retrying")
-			time.Sleep(1 * time.Second)
-			continue
-		}
-		break
+func inventoryApi(queue inventory.Queue, repo inventory.Repository) func (r chi.Router) {
+	return func (r chi.Router) {
+		service := inventory.NewService(repo, queue)
+		invApi := inventory.NewApi(service)
+		invApi.ConfigureRouter(r)
 	}
-
-	service := inventory.NewService(repo, queue)
-
-	invApi := inventory.NewApi(service)
-	invApi.ConfigureRouter(r)
 }
 
 func createRouteDocs(r chi.Router) {
