@@ -25,8 +25,8 @@ RUN adduser \
 WORKDIR $GOPATH/src/github.com/sksmith/smfg-inventory
 COPY . .
 
-RUN mkdir /migrations
-COPY db/migrations /migrations
+RUN mkdir -p /db/migrations
+COPY ./db/migrations /db/migrations
 
 # Fetch dependencies.
 RUN go get -d -v
@@ -50,7 +50,7 @@ COPY --from=builder /etc/group /etc/group
 
 # Copy our static executable
 COPY --from=builder /go/bin/smfg-inventory /go/bin/smfg-inventory
-COPY --from=builder /migrations /go/bin/db/migrations
+COPY --from=builder /db/migrations /db/migrations
 
 # Use an unprivileged user.
 USER appuser:appuser
