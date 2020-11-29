@@ -36,7 +36,6 @@ var (
 	configUrl = os.Getenv("SMFG_CONFIG_SERVER_URL")
 	configBranch = os.Getenv("SMFG_CONFIG_SERVER_BRANCH")
 	profile = os.Getenv("SMFG_PROFILE")
-	
 )
 
 func main() {
@@ -60,7 +59,7 @@ func main() {
 	queue := rabbit()
 
 	log.Info().Msg("configuring router...")
-	r := configureRouter(queue, repo)
+	r := configureRouter(queue, repo, config.QInventoryExchange, config.QReservationExchange)
 
 	log.Info().Msg("generating configurations...")
 	if config.GenerateRoutes {
@@ -77,12 +76,16 @@ func rabbit() inventory.Queue {
 	signal.Notify(osChannel, os.Kill)
 
 	for {
-		queue = bunnyq.New(context.Background(), config.QName, bunnyq.Address{
-			User: config.QUser,
-			Pass: config.QPass,
-			Host: config.QHost,
-			Port: config.QPort,
-		}, osChannel, bunnyq.LogHandler(logger{}))
+		queue = bunnyq.New(context.Background(),
+			bunnyq.Address{
+				User: config.QUser,
+				Pass: config.QPass,
+				Host: config.QHost,
+				Port: config.QPort,
+			},
+			osChannel,
+			bunnyq.LogHandler(logger{}),
+		)
 
 		break
 	}
@@ -173,7 +176,7 @@ func configDatabase(ctx context.Context) {
 	}
 }
 
-func configureRouter(queue inventory.Queue, repo inventory.Repository) chi.Router {
+func configureRouter(queue inventory.Queue, repo inventory.Repository, invExchange, resExchange string) chi.Router {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -184,15 +187,15 @@ func configureRouter(queue inventory.Queue, repo inventory.Repository) chi.Route
 	r.Use(api.LoggingMiddleware)
 
 	r.Handle("/inventory/metrics", promhttp.Handler())
-	r.Route("/inventory/v1", inventoryApi(queue, repo))
+	r.Route("/inventory/v1", inventoryApi(queue, repo, invExchange, resExchange))
 	r.Mount("/inventory/admin", admin.Router())
 
 	return r
 }
 
-func inventoryApi(queue inventory.Queue, repo inventory.Repository) func (r chi.Router) {
+func inventoryApi(queue inventory.Queue, repo inventory.Repository, invExchange, resExchange string) func (r chi.Router) {
 	return func (r chi.Router) {
-		service := inventory.NewService(repo, queue)
+		service := inventory.NewService(repo, queue, invExchange, resExchange)
 		invApi := inventory.NewApi(service)
 		invApi.ConfigureRouter(r)
 	}

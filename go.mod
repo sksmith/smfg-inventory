@@ -13,6 +13,6 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.7.1
 	github.com/rs/zerolog v1.20.0
-	github.com/sksmith/bunnyq v0.0.2
+	github.com/sksmith/bunnyq v0.2.2
 	github.com/sksmith/go-spring-config v0.0.0-20201006124818-37e3a774bfd9
 )

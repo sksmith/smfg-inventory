@@ -81,7 +81,7 @@ func TestList(t *testing.T) {
 		return products, nil
 	}
 
-	ts := httptest.NewServer(configureRouter(mockQueue, mockRepo))
+	ts := httptest.NewServer(configureRouter(mockQueue, mockRepo, "inventory.fanout", "reservation.filled.fanout"))
 	defer ts.Close()
 
 	res, err := http.Get(ts.URL + "/inventory/v1")
@@ -106,7 +106,7 @@ func TestListError(t *testing.T) {
 		return nil, errors.New("some terrible error has occurred in the repo")
 	}
 
-	ts := httptest.NewServer(configureRouter(mockQueue, mockRepo))
+	ts := httptest.NewServer(configureRouter(mockQueue, mockRepo, "inventory.fanout", "reservation.filled.fanout"))
 	defer ts.Close()
 
 	res, err := http.Get(ts.URL + "/inventory/v1")
@@ -137,7 +137,7 @@ func TestPagination(t *testing.T) {
 		return nil, nil
 	}
 
-	ts := httptest.NewServer(configureRouter(mockQueue, mockRepo))
+	ts := httptest.NewServer(configureRouter(mockQueue, mockRepo, "inventory.fanout", "reservation.filled.fanout"))
 	defer ts.Close()
 
 	_, err := http.Get(ts.URL + fmt.Sprintf("/inventory/v1?limit=%d&offset=%d", wantLimit, wantOffset))
@@ -171,7 +171,7 @@ func TestCreate(t *testing.T) {
 		return nil
 	}
 
-	ts := httptest.NewServer(configureRouter(mockQueue, mockRepo))
+	ts := httptest.NewServer(configureRouter(mockQueue, mockRepo, "inventory.fanout", "reservation.filled.fanout"))
 	defer ts.Close()
 
 	data, err := json.Marshal(tp)
@@ -230,7 +230,7 @@ func TestCreateProductionEvent(t *testing.T) {
 		return nil
 	}
 
-	ts := httptest.NewServer(configureRouter(mockQueue, mockRepo))
+	ts := httptest.NewServer(configureRouter(mockQueue, mockRepo, "inventory.fanout", "reservation.filled.fanout"))
 	defer ts.Close()
 
 	data, err := json.Marshal(tpe)
@@ -273,7 +273,7 @@ func TestCreateProductNotFound(t *testing.T) {
 		return inventory.Product{}, sql.ErrNoRows
 	}
 
-	ts := httptest.NewServer(configureRouter(mockQueue, mockRepo))
+	ts := httptest.NewServer(configureRouter(mockQueue, mockRepo, "inventory.fanout", "reservation.filled.fanout"))
 	defer ts.Close()
 
 	data, err := json.Marshal(tpe)
@@ -364,7 +364,7 @@ func TestCreateReservation(t *testing.T) {
 		return nil
 	}
 
-	ts := httptest.NewServer(configureRouter(mockQueue, mockRepo))
+	ts := httptest.NewServer(configureRouter(mockQueue, mockRepo, "inventory.fanout", "reservation.filled.fanout"))
 	defer ts.Close()
 
 	data, err := json.Marshal(tr)

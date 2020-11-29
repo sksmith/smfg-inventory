@@ -23,7 +23,8 @@ type AppConfig struct {
 	QPort          string
 	QUser          string
 	QPass          string
-	QName          string
+	QInventoryExchange string
+	QReservationExchange string
 }
 
 const maxRetries = 12
@@ -68,7 +69,8 @@ func LoadConfigs(url, branch, profile string) (*AppConfig, error) {
 		appConfig.QPort = config.Get("queue.port")
 		appConfig.QUser = config.Get("queue.user")
 		appConfig.QPass = config.Get("queue.pass")
-		appConfig.QName = config.Get("queue.name")
+		appConfig.QInventoryExchange = config.Get("queue.inventory.exchange")
+		appConfig.QReservationExchange = config.Get("queue.reservation.exchange")
 	}
 
 	return appConfig, nil

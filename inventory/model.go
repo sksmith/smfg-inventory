@@ -6,16 +6,16 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"github.com/jinzhu/copier"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/sksmith/bunnyq"
 	"github.com/sksmith/smfg-inventory/db"
-	"github.com/jinzhu/copier"
 	"time"
 )
 
-func NewService(repo Repository, bq Queue) *service {
-	return &service{repo: repo, bq: bq}
+func NewService(repo Repository, bq Queue, invExchange, resExchange string) *service {
+	return &service{repo: repo, bq: bq, invExchange: invExchange, resExchange: resExchange}
 }
 
 type Queue interface {
@@ -31,8 +31,10 @@ type Service interface {
 }
 
 type service struct {
-	repo Repository
-	bq Queue
+	repo        Repository
+	bq          Queue
+	invExchange string
+	resExchange string
 }
 
 func (s *service) CreateProduct(ctx context.Context, product Product) error {
@@ -65,11 +67,9 @@ func (s *service) Produce(ctx context.Context, product Product, event *Productio
 	}
 
 	if dbEvent.RequestID != "" {
-		event.ID = dbEvent.ID
-		event.Created = dbEvent.Created
-		event.Quantity = dbEvent.Quantity
-		event.RequestID = dbEvent.RequestID
-		event.Sku = dbEvent.Sku
+		if err := copier.Copy(event, &dbEvent); err != nil {
+			return err
+		}
 		return nil
 	}
 
@@ -88,14 +88,10 @@ func (s *service) Produce(ctx context.Context, product Product, event *Productio
 		return errors.WithMessage(err, "failed to add production to product")
 	}
 
-	body, err := json.Marshal(product)
+	err = s.publishInventory(ctx, product)
 	if err != nil {
 		rollback(ctx, tx, err)
-		return errors.WithMessage(err, "failed to serialize message for queue")
-	}
-	if err = s.bq.Publish(ctx, "inventory.fanout", body); err != nil {
-		rollback(ctx, tx, err)
-		return errors.WithMessage(err, "failed to send inventory update to queue")
+		return errors.WithMessage(err, "failed to publish inventory")
 	}
 
 	if err = tx.Commit(ctx); err != nil {
@@ -111,6 +107,17 @@ func (s *service) Produce(ctx context.Context, product Product, event *Productio
 	return nil
 }
 
+func (s *service) publishInventory(ctx context.Context, product Product) error {
+	body, err := json.Marshal(product)
+	if err != nil {
+		return errors.WithMessage(err, "failed to serialize message for queue")
+	}
+	if err = s.bq.Publish(ctx, s.invExchange, body); err != nil {
+		return errors.WithMessage(err, "failed to send inventory update to queue")
+	}
+	return nil
+}
+
 func (s *service) Reserve(ctx context.Context, pr Product, res *Reservation) error {
 	tx, err := s.repo.BeginTransaction(ctx)
 	if err != nil {
@@ -122,7 +129,7 @@ func (s *service) Reserve(ctx context.Context, pr Product, res *Reservation) err
 		return err
 	}
 	if dbRes.RequestID != "" {
-		err = copier.Copy(&dbRes, res)
+		err = copier.Copy(res, &dbRes)
 		if err != nil {
 			return errors.WithMessage(err, "failed to copy db values into reservation")
 		}
@@ -193,21 +200,34 @@ func (s *service) fillReserves(ctx context.Context, product Product) error {
 			return errors.WithStack(err)
 		}
 
+		err = s.publishInventory(ctx, product)
+		if err != nil {
+			rollback(ctx, tx, err)
+			return errors.WithMessage(err, "failed to publish inventory")
+		}
+
 		if closed {
-			body, err := json.Marshal(reservation)
+			err := s.publishReservation(ctx, reservation)
 			if err != nil {
 				rollback(ctx, tx, err)
-				return errors.WithMessage(err, "error marshalling reservation to send to queue")
-			}
-			err = s.bq.Publish(ctx, "reservation.filled.fanout", body)
-			if err != nil {
-				rollback(ctx, tx, err)
-				return errors.WithStack(err)
+				return err
 			}
 		}
 		if err = tx.Commit(ctx); err != nil {
 			return errors.WithStack(err)
 		}
+	}
+	return nil
+}
+
+func (s *service) publishReservation(ctx context.Context, reservation Reservation) error {
+	body, err := json.Marshal(reservation)
+	if err != nil {
+		return errors.WithMessage(err, "error marshalling reservation to send to queue")
+	}
+	err = s.bq.Publish(ctx, s.resExchange, body)
+	if err != nil {
+		return errors.WithMessage(err, "error publishing reservation")
 	}
 	return nil
 }
@@ -248,38 +268,38 @@ func (s *service) GetProduct(ctx context.Context, sku string) (Product, error) {
 
 // ProductionEvent is an entity. An addition to inventory through production of a Product.
 type ProductionEvent struct {
-	ID uint64 `json:"id"`
-	RequestID string `json:"requestID"`
-	Sku string `json:"sku"`
-	Quantity int64 `json:"quantity"`
-	Created time.Time `json:"created"`
+	ID        uint64    `json:"id"`
+	RequestID string    `json:"requestID"`
+	Sku       string    `json:"sku"`
+	Quantity  int64     `json:"quantity"`
+	Created   time.Time `json:"created"`
 }
 
 // Product is a value object. A SKU able to be produced by the factory.
 type Product struct {
-	Sku string `json:"sku"`
-	Upc string `json:"upc"`
-	Name string `json:"name"`
-	Available int64 `json:"available"`
-	Reserved int64 `json:"reserved"`
+	Sku       string `json:"sku"`
+	Upc       string `json:"upc"`
+	Name      string `json:"name"`
+	Available int64  `json:"available"`
+	Reserved  int64  `json:"reserved"`
 }
 
 type ReserveState string
 
-const(
-	Open ReserveState = "Open"
-	Closed = "Closed"
+const (
+	Open   ReserveState = "Open"
+	Closed              = "Closed"
 	//None = ""
 )
 
 // Reservation is an entity. An amount of inventory set aside for a given Customer.
 type Reservation struct {
-	ID uint64 `json:"id"`
-	RequestID string `json:"requestId"`
-	Requester string `json:"requester"`
-	Sku string `json:"sku"`
-	State ReserveState `json:"state"`
-	ReservedQuantity int64 `json:"reservedQuantity"`
-	RequestedQuantity int64 `json:"requestedQuantity"`
-	Created time.Time `json:"created"`
+	ID                uint64       `json:"id"`
+	RequestID         string       `json:"requestId"`
+	Requester         string       `json:"requester"`
+	Sku               string       `json:"sku"`
+	State             ReserveState `json:"state"`
+	ReservedQuantity  int64        `json:"reservedQuantity"`
+	RequestedQuantity int64        `json:"requestedQuantity"`
+	Created           time.Time    `json:"created"`
 }

@@ -206,7 +206,7 @@ func (d *dbRepo) GetSkuReservationsByState(ctx context.Context, sku string, stat
 
 	reservations := make([]Reservation, 0)
 	rows, err := tx.Query(ctx,
-		`SELECT id, requester, sku, state, reserved_quantity, requested_quantity 
+		`SELECT id, request_id, requester, sku, state, reserved_quantity, requested_quantity, created
                FROM reservations
               WHERE sku = $1 AND state = $2
            ORDER BY created ASC LIMIT $3 OFFSET $4;`,
@@ -219,7 +219,7 @@ func (d *dbRepo) GetSkuReservationsByState(ctx context.Context, sku string, stat
 
 	for rows.Next() {
 		r := Reservation{}
-		err = rows.Scan(&r.ID, &r.Requester, &r.Sku, &r.State, &r.ReservedQuantity, &r.RequestedQuantity)
+		err = rows.Scan(&r.ID, &r.RequestID, &r.Requester, &r.Sku, &r.State, &r.ReservedQuantity, &r.RequestedQuantity, &r.Created)
 		if err != nil {
 			m.Complete(err)
 			return nil, err
@@ -240,10 +240,10 @@ func (d *dbRepo) GetReservationByRequestID(ctx context.Context, requestId string
 
 	r := Reservation{}
 	err := tx.QueryRow(ctx,
-		`SELECT id, request_id, requester, sku, state, reserved_quantity, requested_quantity 
+		`SELECT id, request_id, requester, sku, state, reserved_quantity, requested_quantity, created
                FROM reservations
               WHERE request_id = $1;`,
-		requestId).Scan(&r.ID, &r.RequestID, &r.Requester, &r.Sku, &r.State, &r.ReservedQuantity, &r.RequestedQuantity)
+		requestId).Scan(&r.ID, &r.RequestID, &r.Requester, &r.Sku, &r.State, &r.ReservedQuantity, &r.RequestedQuantity, &r.Created)
 	if err != nil {
 		m.Complete(err)
 		if err == pgx.ErrNoRows {
