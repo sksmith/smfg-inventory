@@ -10,6 +10,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/sksmith/bunnyq"
 	"github.com/sksmith/smfg-inventory/db"
+	"github.com/jinzhu/copier"
 	"time"
 )
 
@@ -120,16 +121,11 @@ func (s *service) Reserve(ctx context.Context, pr Product, res *Reservation) err
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-
 	if dbRes.RequestID != "" {
-		res.RequestedQuantity = dbRes.RequestedQuantity
-		res.Requester = dbRes.Requester
-		res.Sku = dbRes.Sku
-		res.RequestID = dbRes.RequestID
-		res.ReservedQuantity = dbRes.ReservedQuantity
-		res.State = dbRes.State
-		res.ID = dbRes.ID
-		res.Created = dbRes.Created
+		err = copier.Copy(&dbRes, res)
+		if err != nil {
+			return errors.WithMessage(err, "failed to copy db values into reservation")
+		}
 		return nil
 	}
 

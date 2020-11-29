@@ -82,12 +82,41 @@ func rabbit() inventory.Queue {
 			Pass: config.QPass,
 			Host: config.QHost,
 			Port: config.QPort,
-		}, osChannel)
+		}, osChannel, bunnyq.LogHandler(logger{}))
 
 		break
 	}
 
 	return queue
+}
+
+type logger struct {
+}
+
+func (l logger) Log(ctx context.Context, level bunnyq.LogLevel, msg string, data map[string]interface{}) {
+	var evt *zerolog.Event
+	switch level {
+	case bunnyq.LogLevelTrace:
+		evt = log.Trace()
+	case bunnyq.LogLevelDebug:
+		evt = log.Debug()
+	case bunnyq.LogLevelInfo:
+		evt = log.Info()
+	case bunnyq.LogLevelWarn:
+		evt = log.Warn()
+	case bunnyq.LogLevelError:
+		evt = log.Error()
+	case bunnyq.LogLevelNone:
+		evt = log.Info()
+	default:
+		evt = log.Info()
+	}
+
+	for k, v := range data {
+		evt.Interface(k, v)
+	}
+
+	evt.Msg(msg)
 }
 
 func printLogHeader(c *AppConfig) {
