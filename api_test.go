@@ -44,12 +44,14 @@ var testProducts = []inventory.Product{
 var testProductionEvents = []inventory.ProductionEvent{
 	{
 		ID:       10,
+		RequestID: "TestOneRID",
 		Sku:      "TestOneSKU",
 		Quantity: 5,
 		Created:  time.Date(2020, 8, 6, 10, 55, 0, 0, time.UTC),
 	},
 	{
 		ID:       11,
+		RequestID: "TestTwoRID",
 		Sku:      "TestOneSKU",
 		Quantity: 5,
 		Created:  time.Date(2020, 11, 22, 10, 55, 0, 0, time.UTC),
@@ -241,14 +243,14 @@ func TestCreateProductionEvent(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if res.StatusCode != 201 {
+		t.Errorf("unexpected status code got=%d want=%d", res.StatusCode, 201)
+	}
+
 	body, err := ioutil.ReadAll(res.Body)
 	_ = res.Body.Close()
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	if res.StatusCode != 201 {
-		t.Errorf("unexpected status code got=%d want=%d", res.StatusCode, 201)
 	}
 
 	resp := &inventory.ProductionEventResponse{}

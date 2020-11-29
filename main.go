@@ -10,17 +10,17 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/sksmith/bunnyq"
 	"github.com/sksmith/smfg-inventory/admin"
 	"github.com/sksmith/smfg-inventory/api"
 	"github.com/sksmith/smfg-inventory/db"
 	"github.com/sksmith/smfg-inventory/inventory"
-	"github.com/sksmith/bunnyq"
 	"net/http"
 	"os"
+	"os/signal"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-
 )
 const (
 	AppName = "smfg-inventory"
@@ -73,24 +73,17 @@ func main() {
 
 func rabbit() inventory.Queue {
 	var queue inventory.Queue
-	var err error
+	osChannel := make(chan os.Signal, 1)
+	signal.Notify(osChannel, os.Kill)
 
 	for {
-		// queue, err = inventory.NewRabbitClient(
-		// 	config.QName,
-		// 	config.QUser,
-		// 	config.QPass,
-		// 	config.QHost,
-		// 	config.QPort)
-		// if err != nil {
-		// 	log.Error().Err(err).Str("name", config.QName).
-		// 		Str("user", config.QUser).
-		// 		Str("host", config.QHost).
-		// 		Str("port", config.QPort).
-		// 		Msg("failed to connect to rabbitmq... retrying")
-		// 	time.Sleep(1 * time.Second)
-		// 	continue
-		// }
+		queue = bunnyq.New(context.Background(), config.QName, bunnyq.Address{
+			User: config.QUser,
+			Pass: config.QPass,
+			Host: config.QHost,
+			Port: config.QPort,
+		}, osChannel)
+
 		break
 	}
 

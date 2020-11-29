@@ -73,6 +73,7 @@ func NewMockRepo() MockRepo {
 		GetProductFunc:            func(ctx context.Context, sku string, tx ...db.Transaction) (Product, error) { return Product{}, nil },
 		GetAllProductsFunc:        func(ctx context.Context, limit int, offset int, tx ...db.Transaction) ([]Product, error) { return nil, nil },
 		BeginTransactionFunc:      func(ctx context.Context) (db.Transaction, error) { return MockTransaction{}, nil },
+		GetReservationByRequestIDFunc: func(ctx context.Context, requestId string, tx ...db.Transaction) (Reservation, error) {return Reservation{}, nil },
 	}
 }
 

@@ -117,11 +117,11 @@ func (s *service) Reserve(ctx context.Context, pr Product, res *Reservation) err
 	}
 
 	dbRes, err := s.repo.GetReservationByRequestID(ctx, res.RequestID)
-	if err != nil  {
-		if !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-	} else {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+
+	if dbRes.RequestID != "" {
 		res.RequestedQuantity = dbRes.RequestedQuantity
 		res.Requester = dbRes.Requester
 		res.Sku = dbRes.Sku
