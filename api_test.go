@@ -5,8 +5,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"github.com/pkg/errors"
+	"github.com/sksmith/bunnyq"
 	"github.com/sksmith/smfg-inventory/db"
 	"github.com/sksmith/smfg-inventory/inventory"
 	"io/ioutil"
@@ -356,7 +357,7 @@ func TestCreateReservation(t *testing.T) {
 		}
 
 	sentToQueue := false
-	mockQueue.SendFunc = func(body interface{}, options ...inventory.MessageOption) error {
+	mockQueue.PublishFunc = func(ctx context.Context, exchange string, body []byte, options ...bunnyq.PublishOption) error {
 		sentToQueue = true
 		return nil
 	}

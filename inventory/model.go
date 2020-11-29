@@ -5,14 +5,20 @@ package inventory
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	"github.com/sksmith/bunnyq"
 	"github.com/sksmith/smfg-inventory/db"
 	"time"
 )
 
-func NewService(repo Repository, queue Queue) *service {
-	return &service{repo: repo, queue: queue}
+func NewService(repo Repository, bq Queue) *service {
+	return &service{repo: repo, bq: bq}
+}
+
+type Queue interface {
+	Publish(ctx context.Context, exchange string, body []byte, options ...bunnyq.PublishOption) error
 }
 
 type Service interface {
@@ -25,7 +31,7 @@ type Service interface {
 
 type service struct {
 	repo Repository
-	queue Queue
+	bq Queue
 }
 
 func (s *service) CreateProduct(ctx context.Context, product Product) error {
@@ -81,7 +87,12 @@ func (s *service) Produce(ctx context.Context, product Product, event *Productio
 		return errors.WithMessage(err, "failed to add production to product")
 	}
 
-	if err = s.queue.Send(product, Exchange("inventory.fanout")); err != nil {
+	body, err := json.Marshal(product)
+	if err != nil {
+		rollback(ctx, tx, err)
+		return errors.WithMessage(err, "failed to serialize message for queue")
+	}
+	if err = s.bq.Publish(ctx, "inventory.fanout", body); err != nil {
 		rollback(ctx, tx, err)
 		return errors.WithMessage(err, "failed to send inventory update to queue")
 	}
@@ -187,7 +198,12 @@ func (s *service) fillReserves(ctx context.Context, product Product) error {
 		}
 
 		if closed {
-			err := s.queue.Send(reservation, Exchange("reservation.filled.fanout"))
+			body, err := json.Marshal(reservation)
+			if err != nil {
+				rollback(ctx, tx, err)
+				return errors.WithMessage(err, "error marshalling reservation to send to queue")
+			}
+			err = s.bq.Publish(ctx, "reservation.filled.fanout", body)
 			if err != nil {
 				rollback(ctx, tx, err)
 				return errors.WithStack(err)

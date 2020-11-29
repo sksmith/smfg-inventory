@@ -1,6 +1,6 @@
 module github.com/sksmith/smfg-inventory
 
-go 1.14
+go 1.15
 
 require (
 	github.com/c2h5oh/datasize v0.0.0-20200825124411-48ed595a09d2 // indirect
@@ -14,8 +14,8 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.7.1
 	github.com/rs/zerolog v1.20.0
+	github.com/sksmith/bunnyq v0.0.1
 	github.com/sksmith/go-spring-config v0.0.0-20201006124818-37e3a774bfd9
-	github.com/streadway/amqp v1.0.0
 	github.com/tsenart/go-tsz v0.0.0-20180814235614-0bd30b3df1c3 // indirect
-	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
+	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 )
