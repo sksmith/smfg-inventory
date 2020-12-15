@@ -53,10 +53,6 @@ func (s *service) Produce(ctx context.Context, product Product, event *Productio
 	if event == nil {
 		return errors.New("event is required")
 	}
-	tx, err := s.repo.BeginTransaction(ctx)
-	if err != nil {
-		return errors.WithStack(err)
-	}
 
 	if event.RequestID == "" {
 		return errors.New("request id is required")
@@ -66,7 +62,7 @@ func (s *service) Produce(ctx context.Context, product Product, event *Productio
 	}
 
 	log.Debug().Str("func", funcName).Str("requestId", event.RequestID).Msg("getting production event")
-	dbEvent, err := s.repo.GetProductionEventByRequestID(ctx, event.RequestID, tx)
+	dbEvent, err := s.repo.GetProductionEventByRequestID(ctx, event.RequestID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return errors.WithStack(err)
 	}
@@ -82,6 +78,10 @@ func (s *service) Produce(ctx context.Context, product Product, event *Productio
 	event.Sku = product.Sku
 	event.Created = time.Now()
 
+	tx, err := s.repo.BeginTransaction(ctx)
+	if err != nil {
+		return errors.WithStack(err)
+	}
 	log.Debug().Str("func", funcName).Str("requestId", event.RequestID).Msg("persisting production event")
 	if err = s.repo.SaveProductionEvent(ctx, event, tx); err != nil {
 		rollback(ctx, tx, err)

@@ -3,6 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"os"
+	"os/signal"
+	"time"
+
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/docgen"
@@ -15,27 +20,25 @@ import (
 	"github.com/sksmith/smfg-inventory/api"
 	"github.com/sksmith/smfg-inventory/db"
 	"github.com/sksmith/smfg-inventory/inventory"
-	"net/http"
-	"os"
-	"os/signal"
-	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
 const (
 	AppName = "smfg-inventory"
 )
+
 var (
-	AppVersion string
+	AppVersion  string
 	Sha1Version string
-	BuildTime string
+	BuildTime   string
 
 	dbPool *pgxpool.Pool
 	config *AppConfig
 
-	configUrl = os.Getenv("SMFG_CONFIG_SERVER_URL")
+	configUrl    = os.Getenv("SMFG_CONFIG_SERVER_URL")
 	configBranch = os.Getenv("SMFG_CONFIG_SERVER_BRANCH")
-	profile = os.Getenv("SMFG_PROFILE")
+	profile      = os.Getenv("SMFG_PROFILE")
 )
 
 func main() {
@@ -49,6 +52,8 @@ func main() {
 	}
 	log.Info().Msg("configuring logging...")
 	configLogging()
+
+	config.Revision = "2"
 	printLogHeader(config)
 
 	log.Info().Msg("connecting to the database...")
@@ -67,7 +72,7 @@ func main() {
 	}
 
 	log.Info().Str("port", config.Port).Msg("listening")
-	log.Fatal().Err(http.ListenAndServe(":" + config.Port, r))
+	log.Fatal().Err(http.ListenAndServe(":"+config.Port, r))
 }
 
 func rabbit() inventory.Queue {
@@ -126,6 +131,7 @@ func printLogHeader(c *AppConfig) {
 	if c.LogText {
 		log.Info().Msg("=============================================")
 		log.Info().Msg(fmt.Sprintf("    Application: %s", AppName))
+		log.Info().Msg(fmt.Sprintf("       Revision: %s", c.Revision))
 		log.Info().Msg(fmt.Sprintf("        Profile: %s", profile))
 		log.Info().Msg(fmt.Sprintf("  Config Server: %s - %s", configUrl, configBranch))
 		log.Info().Msg(fmt.Sprintf("    Tag Version: %s", AppVersion))
@@ -134,6 +140,7 @@ func printLogHeader(c *AppConfig) {
 		log.Info().Msg("=============================================")
 	} else {
 		log.Info().Str("application", AppName).
+			Str("revision", c.Revision).
 			Str("version", AppVersion).
 			Str("sha1ver", Sha1Version).
 			Str("build-time", BuildTime).
@@ -193,8 +200,8 @@ func configureRouter(queue inventory.Queue, repo inventory.Repository, invExchan
 	return r
 }
 
-func inventoryApi(queue inventory.Queue, repo inventory.Repository, invExchange, resExchange string) func (r chi.Router) {
-	return func (r chi.Router) {
+func inventoryApi(queue inventory.Queue, repo inventory.Repository, invExchange, resExchange string) func(r chi.Router) {
+	return func(r chi.Router) {
 		service := inventory.NewService(repo, queue, invExchange, resExchange)
 		invApi := inventory.NewApi(service)
 		invApi.ConfigureRouter(r)

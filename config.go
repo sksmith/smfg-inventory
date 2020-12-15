@@ -1,29 +1,31 @@
 package main
 
 import (
-	"github.com/rs/zerolog/log"
-	sc "github.com/sksmith/go-spring-config"
 	"strconv"
 	"time"
+
+	"github.com/rs/zerolog/log"
+	sc "github.com/sksmith/go-spring-config"
 )
 
 type AppConfig struct {
-	Port           string
-	GenerateRoutes bool
-	LogLevel       string
-	LogText        bool
-	InMemoryDb     bool
-	DbHost         string
-	DbPort         string
-	DbUser         string
-	DbPass         string
-	DbName         string
-	DbMigrate      bool
-	QHost          string
-	QPort          string
-	QUser          string
-	QPass          string
-	QInventoryExchange string
+	Port                 string
+	GenerateRoutes       bool
+	LogLevel             string
+	LogText              bool
+	InMemoryDb           bool
+	DbHost               string
+	DbPort               string
+	DbUser               string
+	DbPass               string
+	DbName               string
+	DbMigrate            bool
+	QHost                string
+	QPort                string
+	QUser                string
+	QPass                string
+	Revision             string
+	QInventoryExchange   string
 	QReservationExchange string
 }
 
